@@ -39,7 +39,7 @@ Reversing this order — asking structured questions before hearing the story �
 These rules are non-negotiable and apply regardless of which command is calling `/cv.clarify`.
 
 **1. One question at a time.**
-Never present a list of questions. Never say "I have a few things to clarify." Ask question 1. Wait for the answer. Then ask question 2. The conversation should feel like an interview, not a form.
+**CRITICAL RULE**: You MUST ask EXACTLY ONE question per turn. You MUST STOP generating text immediately after presenting the multiple choice options for the current question. Waiting for the user's answer is non-negotiable. If you ask more than one question in a single response, you have failed. The conversation should feel like an interview, not a form.
 
 **2. Every question gets multiple choice.**
 Format every question with 3–4 labeled options plus a final option:

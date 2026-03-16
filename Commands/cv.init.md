@@ -75,6 +75,9 @@ Listen carefully to their answer. Extract any concrete signals (names, user type
 
 ## Step 3 — Structured Q&A
 
+**CRITICAL RULE: ONE QUESTION AT A TIME.**
+> You MUST ask EXACTLY ONE question per turn. You MUST STOP generating text immediately after presenting the multiple choice options for the current question. Waiting for the user's answer is non-negotiable. If you ask more than one question in a single response, you have failed your core directive.
+
 Run `/cv.clarify` in **mission mode**. There are **5 required fields** and they must all be resolved before `mission.md` is written.
 
 The 5 fields map to questions in this order:

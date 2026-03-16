@@ -33,7 +33,7 @@ const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI';
 const CV_GITHUB_RAW  = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
 const CV_GITHUB_API  = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
 const REPO_CLI_DIR   = 'CLI';
-const REPO_CMDS_DIR  = 'commands';
+const REPO_CMDS_DIR  = 'Commands';
 
 // Subfolder name used inside each tool's rules/commands directory
 const CV_SUBFOLDER = 'codevision';
@@ -52,6 +52,12 @@ const ARTIFACT_FOLDERS = [
 // cv upgrade). The install step copies them into the appropriate project path.
 
 const WIZARD_TARGETS = [
+  {
+    value: 'antigravity',
+    name: 'Antigravity',
+    type: 'subdir',
+    destDir: '.agents/commands/codevision',
+  },
   {
     value: 'claude-code',
     name: 'Claude Code',
@@ -415,10 +421,12 @@ async function cmdInit(args) {
   }
 
   // Write config.toon — always overwrite so it reflects current choices
+  // tools: stored as comma-separated values so cv upgrade knows where to reinstall
   const configToon = toToon({
     project: slug,
     name: projectName,
     store_mode: storeMode,
+    tools: targets.map(t => t.value).join(','),
     cwd,
     codevision_version: CV_VERSION,
     created_at: now,
@@ -506,6 +514,34 @@ async function cmdInit(args) {
   console.log('');
   console.log(dim('  Tip: run ') + bold('cv fetch ' + slug) + dim(' to load artifacts into AI context'));
   console.log('');
+}
+
+// ─── Command reinstall helper ────────────────────────────────────────────────
+//
+// Used by both cmdInit (first install) and cmdUpgrade (refresh).
+// Reads installed tools from config.toon and copies updated files from
+// ~/.codevision/commands/ into each tool's destination folder.
+
+function reinstallCommandsForProject(config, projectCwd, { force = true } = {}) {
+  const toolValues = (config.tools || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!toolValues.length) return;
+
+  const targets = WIZARD_TARGETS.filter(t => toolValues.includes(t.value));
+  let total = 0;
+
+  for (const t of targets) {
+    if (t.type === 'subdir') {
+      const dest = join(projectCwd, t.destDir);
+      const { installed } = installFiles(CV_COMMANDS, dest, { force });
+      if (installed) {
+        ok(`${t.name}: ${installed} file(s) → ${t.destDir}/`);
+        total += installed;
+      }
+    }
+    // append-type tools (Copilot, Codex) are not re-written on upgrade
+    // to avoid clobbering user content in those files
+  }
+  return total;
 }
 
 // ─── cmd: fetch ───────────────────────────────────────────────────────────────
@@ -783,6 +819,23 @@ async function cmdUpgrade(args) {
   if (errs > 0) {
     console.log('\n' + red(errs + ' file(s) failed.') + ' Run cv upgrade --force to retry.\n');
     process.exit(1);
+  }
+
+  // ── Reinstall into all known project AI tool folders ──────────────────────
+  const allProjects = _listAllProjects();
+  const projectsWithTools = allProjects.filter(p => p.config?.tools);
+  if (projectsWithTools.length) {
+    console.log('');
+    console.log(bold('Updating AI tool command folders') + '\n');
+    for (const { slug, config } of projectsWithTools) {
+      const projectCwd = config.cwd || '';
+      if (!projectCwd || !existsSync(projectCwd)) {
+        info(slug + ': project cwd not found (' + (projectCwd || 'unset') + ') — skipping');
+        continue;
+      }
+      console.log('  ' + bold(slug) + ' ' + dim(config.tools));
+      reinstallCommandsForProject(config, projectCwd, { force: true });
+    }
   }
 
   console.log('');

@@ -53,16 +53,21 @@ Before asking any questions, ask where this persona is coming from. Use the nati
 A) I have an existing description — I'll paste or describe it
 B) I want to build one from scratch through Q&A
 C) I have a research document or interview notes to base it on
+D) Auto-generate — invent 3 reference personas based on the product description
 → Custom — I'll define it
 ```
 
 - **Option A:** Accept the input, extract all the signals you can, then run clarification only on fields that are missing or ambiguous. Skip questions that are already answered.
 - **Option B:** Run the full Q&A from Step 3.
 - **Option C:** Ask the user to share the document or paste the relevant sections, then treat it like Option A.
+- **Option D:** **Bypass the Q&A entirely.** Read `product.md`. If it doesn't exist, ask for a 1-sentence product description. Then immediately invent 3 distinct, diverse personas that cover the core user base. Output all 3 as separate markdown blocks using the Persona Schema. Set the research basis to "Assumed" and note `[UNVALIDATED]` in the headers. Stop here.
 
 ---
 
 ## Step 3 — Persona Q&A
+
+**CRITICAL RULE: ONE QUESTION AT A TIME.**
+> You MUST ask EXACTLY ONE question per turn. You MUST STOP generating text immediately after presenting the multiple choice options for the current question. Waiting for the user's answer is non-negotiable. If you ask more than one question in a single response, you have failed your core directive.
 
 Run one question at a time. Always use the native UI widget if available. If not, follow the plain text format rules: each option on its own line, blank line between question and options.
 
@@ -292,7 +297,7 @@ After the persona is generated, say:
 > - `/cv.persona PERS-###` — come back to update as you learn more from research
 > - Add the persona ID to any existing chronicles that this persona fits
 
-Log the creation:
+Log the creation. If batch-creating via Option D, log all 3:
 ```
 [YYYY-MM-DD] [/cv.persona] [PERS-###] DECISION: Persona created | NAME: <name> | BASIS: <validated/assumed>
 ```

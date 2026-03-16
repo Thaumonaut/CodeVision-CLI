@@ -53,6 +53,9 @@ C) The product is still early — let's define it through Q&A
 
 ## Step 2 — Product Q&A
 
+**CRITICAL RULE: ONE QUESTION AT A TIME.**
+> You MUST ask EXACTLY ONE question per turn. You MUST STOP generating text immediately after presenting the multiple choice options for the current question. Waiting for the user's answer is non-negotiable. If you ask more than one question in a single response, you have failed your core directive.
+
 Run one question at a time. Always use the native UI widget if available. If not, follow plain text format rules: question on its own line, blank line, then each option on its own line.
 
 Total questions: **9** (6 blocking, 3 advisory). Show progress on every question.
