@@ -1,28 +1,20 @@
 #!/usr/bin/env node
 /**
- * cv — CodeVision CLI
+ * cv — CodeVision CLI v2.3.0
  *
  * Usage:
- *   cv init <slug>              Create project folder structure
+ *   cv init [name]              Interactive setup wizard
  *   cv fetch <slug> [--full]    Print paths for AI context loading
  *   cv status [<slug>]          Print current project state
- *   cv lint [<slug>]            Validate structure and gate conditions
- *
- * All artifacts live at ~/.codevision/projects/<slug>/
- *
- * To install globally:
- *   chmod +x cv.js
- *   npm link   (from this directory)
- * Or run directly:
- *   node cv.js init my-project
+ *   cv lint <slug>              Validate structure and gate conditions
+ *   cv stories <slug> <source>  Parse story document into CHR files
+ *   cv upgrade                  Upgrade CLI and commands from GitHub
+ *   cv migrate                  Run pending project migrations
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, cpSync } from 'fs';
-import { createWriteStream } from 'fs';
-import { pipeline } from 'stream/promises';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, createWriteStream } from 'fs';
+import { input, checkbox, select } from '@inquirer/prompts';
 import https from 'https';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { MIGRATIONS, migrateProject, semverLt } from './cv-migrate.js';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -30,570 +22,838 @@ import { cmdStories } from './cv-stories.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CV_ROOT = join(homedir(), '.codevision');
-const PROJECTS_DIR = join(CV_ROOT, 'projects');
-const CV_VERSION = '2.2.0';
-const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI'; // UPDATE this after creating the repo
-const CV_GITHUB_RAW = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/main`;
-const CV_VERSION_FILE = join(CV_ROOT, 'version');
+const CV_HOME        = join(homedir(), '.codevision');
+const CV_SYSTEM_PROJECTS = join(CV_HOME, 'projects');
+const CV_COMMANDS    = join(CV_HOME, 'commands');
+const CV_CLI_DIR     = join(CV_HOME, 'cli');
+const CV_LIB_DIR     = join(CV_HOME, 'lib');
+const CV_VERSION     = '2.3.0';
+const CV_VERSION_FILE = join(CV_HOME, 'version');
+const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI';
+const CV_GITHUB_RAW  = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
+const CV_GITHUB_API  = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
+const REPO_CLI_DIR   = 'CLI';
+const REPO_CMDS_DIR  = 'commands';
 
-const FOLDER_STRUCTURE = [
-  'chronicles',
-  'features',
-  'specs',
-  'tasks',
-  'ledger',
-  'components',
-  'variables',
-  'stakeholders',
-  'contracts',
+// Subfolder name used inside each tool's rules/commands directory
+const CV_SUBFOLDER = 'codevision';
+
+const ARTIFACT_FOLDERS = [
+  'chronicles', 'features', 'specs', 'tasks', 'ledger',
+  'components', 'variables', 'stakeholders', 'contracts',
 ];
 
-// Seeded empty files that must exist for other commands
-const SEED_FILES = [
-  { path: 'ledger/decisions.md', content: '# Decision Ledger\n\n<!-- Entries written by /cv.* commands -->\n' },
-  { path: 'ledger/changes.md', content: '# Change Log\n\n<!-- Entries written by /cv.change -->\n' },
-  { path: 'components/registry.md', content: '# Component Registry\n\n<!-- Entries written by /cv.component -->\n' },
+// ─── AI Tool targets ─────────────────────────────────────────────────────────
+//
+// type: 'subdir' → copy all .md files into destDir/codevision/
+//       'append' → concatenate a CV block into a single file
+//
+// Command files are always sourced from ~/.codevision/commands/ (downloaded by
+// cv upgrade). The install step copies them into the appropriate project path.
+
+const WIZARD_TARGETS = [
+  {
+    value: 'claude-code',
+    name: 'Claude Code',
+    type: 'subdir',
+    destDir: '.claude/commands/codevision',
+  },
+  {
+    value: 'cursor',
+    name: 'Cursor',
+    type: 'subdir',
+    destDir: '.cursor/rules/codevision',
+  },
+  {
+    value: 'windsurf',
+    name: 'Windsurf',
+    type: 'subdir',
+    destDir: '.windsurf/rules/codevision',
+  },
+  {
+    value: 'roocode',
+    name: 'RooCode',
+    type: 'subdir',
+    destDir: '.roo/rules/codevision',
+  },
+  {
+    value: 'kilocode',
+    name: 'KiloCode',
+    type: 'subdir',
+    destDir: '.kilocode/rules/codevision',
+  },
+  {
+    value: 'copilot',
+    name: 'GitHub Copilot',
+    type: 'append',
+    destFile: '.github/copilot-instructions.md',
+  },
+  {
+    value: 'codex',
+    name: 'ChatGPT Codex',
+    type: 'append',
+    destFile: 'AGENTS.md',
+  },
 ];
 
-// ─── Version tracking ────────────────────────────────────────────────────────
+// ─── Version tracking ─────────────────────────────────────────────────────────
 
 function getInstalledVersion() {
-  if (existsSync(CV_VERSION_FILE)) {
-    return readFileSync(CV_VERSION_FILE, 'utf8').trim();
-  }
-  // If no version file exists, assume it's a pre-migration install
-  return '2.1.1';
+  return existsSync(CV_VERSION_FILE) ? readFileSync(CV_VERSION_FILE, 'utf8').trim() : '2.1.1';
+}
+function setInstalledVersion(v) { writeFileSync(CV_VERSION_FILE, v); }
+
+// ─── Colour / output helpers ──────────────────────────────────────────────────
+
+function bold(s)   { return `\x1b[1m${s}\x1b[0m`; }
+function green(s)  { return `\x1b[32m${s}\x1b[0m`; }
+function red(s)    { return `\x1b[31m${s}\x1b[0m`; }
+function dim(s)    { return `\x1b[2m${s}\x1b[0m`; }
+function yellow(s) { return `\x1b[33m${s}\x1b[0m`; }
+function cyan(s)   { return `\x1b[36m${s}\x1b[0m`; }
+function ok(m)     { console.log('  ' + green('✓') + ' ' + m); }
+function fail(m)   { console.log('  ' + red('✗') + ' ' + m); }
+function info(m)   { console.log('  ' + dim('·') + ' ' + m); }
+function warn(m)   { console.log('  ' + yellow('!') + ' ' + m); }
+function die(m)    { console.error('\n' + red('Error:') + ' ' + m + '\n'); process.exit(1); }
+function isoNow()  { return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'); }
+function section(title) {
+  console.log('');
+  console.log(bold(title));
+  console.log(dim('─'.repeat(42)));
 }
 
-function setInstalledVersion(v) {
-  writeFileSync(CV_VERSION_FILE, v);
+// ─── Slug helpers ──────────────────────────────────────────────────────────────
+
+function nameToSlug(name) {
+  return name.toLowerCase().trim()
+    .replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-')
+    .replace(/-+/g, '-').replace(/^-|-$/g, '') || null;
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function projectDir(slug) {
-  return join(PROJECTS_DIR, slug);
+function randomSlug() {
+  return Math.floor(Math.random() * 0xFFFFFFFF).toString(16).padStart(8, '0');
 }
+function slugValid(slug) { return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug); }
 
-function slugValid(slug) {
-  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug);
-}
-
-function bold(str) { return `\x1b[1m${str}\x1b[0m`; }
-function green(str) { return `\x1b[32m${str}\x1b[0m`; }
-function red(str) { return `\x1b[31m${str}\x1b[0m`; }
-function dim(str) { return `\x1b[2m${str}\x1b[0m`; }
-function yellow(str) { return `\x1b[33m${str}\x1b[0m`; }
-
-function ok(msg) { console.log(`  ${green('✓')} ${msg}`); }
-function fail(msg) { console.log(`  ${red('✗')} ${msg}`); }
-function info(msg) { console.log(`  ${dim('·')} ${msg}`); }
-function warn(msg) { console.log(`  ${yellow('!')} ${msg}`); }
-
-function die(msg) {
-  console.error(`\n${red('Error:')} ${msg}\n`);
-  process.exit(1);
-}
-
-function isoNow() {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
-
-// ─── Commands ─────────────────────────────────────────────────────────────────
+// ─── config.toon helpers ──────────────────────────────────────────────────────
 
 /**
- * cv init <slug>
- *
- * Creates the full project folder structure and seed files.
- * Idempotent — safe to run on an existing project (skips existing paths).
+ * Serialise a flat object to a minimal TOON-compatible format.
+ * Values are always strings; null becomes empty.
  */
-function cmdInit(args) {
-  const slug = args[0];
+function toToon(obj) {
+  return Object.entries(obj)
+    .map(([k, v]) => `${k}: ${v == null ? '' : String(v)}`)
+    .join('\n') + '\n';
+}
+
+/**
+ * Parse a simple flat TOON/key-value file.
+ */
+function parseToon(text) {
+  const out = {};
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const idx = t.indexOf(':');
+    if (idx < 0) continue;
+    out[t.slice(0, idx).trim()] = t.slice(idx + 1).trim();
+  }
+  return out;
+}
+
+function readConfigToon(path) {
+  if (!existsSync(path)) return null;
+  try { return parseToon(readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+// ─── Artifact root resolution ─────────────────────────────────────────────────
+
+/**
+ * Find the artifact root for a project.
+ *
+ * Search order:
+ *   1. <cwd>/.cv/config.toon   → project mode (store_mode: project)
+ *   2. ~/.codevision/projects/<slug>/  → system mode (store_mode: system)
+ *
+ * Returns { root, slug, config } or throws via die().
+ */
+function resolveArtifactRoot(slugHint, cwd = process.cwd()) {
+  // 1. Check project-local first
+  const localConfig = join(cwd, '.cv', 'config.toon');
+  if (existsSync(localConfig)) {
+    const cfg = readConfigToon(localConfig);
+    if (cfg && (!slugHint || cfg.project === slugHint)) {
+      return { root: join(cwd, '.cv'), slug: cfg.project, config: cfg };
+    }
+  }
+
+  // 2. System mode — require slug
+  if (slugHint) {
+    const sysRoot = join(CV_SYSTEM_PROJECTS, slugHint);
+    if (existsSync(sysRoot)) {
+      const cfg = readConfigToon(join(sysRoot, 'config.toon')) || { project: slugHint, store_mode: 'system' };
+      return { root: sysRoot, slug: slugHint, config: cfg };
+    }
+  }
+
+  // 3. If no slug given, scan system projects registry
+  if (!slugHint && existsSync(CV_SYSTEM_PROJECTS)) {
+    const dirs = readdirSync(CV_SYSTEM_PROJECTS, { withFileTypes: true })
+      .filter(d => d.isDirectory()).map(d => d.name);
+    if (dirs.length === 1) {
+      const slug = dirs[0];
+      const cfg  = readConfigToon(join(CV_SYSTEM_PROJECTS, slug, 'config.toon')) || { project: slug, store_mode: 'system' };
+      return { root: join(CV_SYSTEM_PROJECTS, slug), slug, config: cfg };
+    }
+  }
+
+  if (slugHint) {
+    die(`Project "${slugHint}" not found.\nRun ${bold('cv status')} to list known projects.`);
+  } else {
+    die(`No CodeVision project found in ${cwd}.\nRun ${bold('cv init')} to create one, or pass a slug: ${bold('cv status <slug>')}`);
+  }
+}
+
+// ─── File installation helpers ────────────────────────────────────────────────
+
+function installFiles(src, dest, { force = false } = {}) {
+  if (!existsSync(src)) return { installed: 0, skipped: 0 };
+  mkdirSync(dest, { recursive: true });
+  const files = readdirSync(src).filter(f => f.endsWith('.md'));
+  let installed = 0, skipped = 0;
+  for (const file of files) {
+    const d = join(dest, file);
+    if (existsSync(d) && !force) { skipped++; continue; }
+    copyFileSync(join(src, file), d);
+    installed++;
+  }
+  return { installed, skipped };
+}
+
+function buildCvBlock(slug) {
+  return [
+    '',
+    '<!-- CodeVision: BEGIN (managed by cv init) -->',
+    '## CodeVision Workflow',
+    '',
+    `This project uses CodeVision for spec-driven development. Project slug: \`${slug}\``,
+    '',
+    '### Command sequence',
+    '`/cv.product` → `/cv.persona` → `/cv.chronicle` → `/cv.scaffold` → `/cv.feature` → `/cv.tasks` → `/cv.implement`',
+    '',
+    '<!-- CodeVision: END -->',
+    '',
+  ].join('\n');
+}
+
+// ─── cmd: init ────────────────────────────────────────────────────────────────
+
+async function cmdInit(args) {
+  const force  = args.includes('--force');
+  const nonFlag = args.filter(a => !a.startsWith('--'));
+  const cwd    = process.cwd();
+
+  console.log('');
+  console.log(bold('╔══════════════════════════════════════╗'));
+  console.log(bold('║       CodeVision Setup Wizard        ║') + ' ' + dim('v' + CV_VERSION));
+  console.log(bold('╚══════════════════════════════════════╝'));
+  console.log('');
+
+  // Ensure command files exist locally before the wizard starts
+  if (!existsSync(CV_COMMANDS)) {
+    console.log(yellow('  Command files not found locally. Fetching from GitHub first...'));
+    console.log('');
+    await cmdUpgrade([]);
+    console.log('');
+  }
+
+  // ── Step 1: Project name ──────────────────────────────────────────────────
+
+  section('Step 1 of 4 — Project name');
+  console.log('');
+
+  let slug = nonFlag[0] && slugValid(nonFlag[0]) ? nonFlag[0] : null;
+  let projectName = slug || '';
 
   if (!slug) {
-    die('Usage: cv init <slug>\n  Example: cv init aiko-health');
+    projectName = await input({
+      message: 'Project name:',
+      default: 'my-project',
+      validate: v => v.trim().length > 0 || 'Please enter a name',
+    });
+    const generated = nameToSlug(projectName) || randomSlug();
+    slug = await input({
+      message: 'Slug (folder name / identifier):',
+      default: generated,
+      validate: v => slugValid(v.trim()) || 'Lowercase letters, numbers, and hyphens only',
+      transformer: v => v.toLowerCase().replace(/\s+/g, '-'),
+    });
+    slug = slug.trim();
   }
 
-  if (!slugValid(slug)) {
-    die(
-      `"${slug}" is not a valid slug.\n` +
-      '  Slugs must be lowercase letters, numbers, and hyphens only.\n' +
-      '  Examples: aiko-health, cosplans, my-app'
-    );
-  }
-
-  const dir = projectDir(slug);
-  const isNew = !existsSync(dir);
-
-  console.log(`\n${bold('CodeVision')} ${dim(`v${CV_VERSION}`)}\n`);
-
-  if (!isNew) {
-    warn(`Project "${slug}" already exists at ${dim(dir)}`);
-    warn('Running in idempotent mode — creating any missing paths.\n');
-  } else {
-    console.log(`${bold('Initializing')} ${green(slug)}\n`);
-  }
-
-  // Create root if needed
-  mkdirSync(PROJECTS_DIR, { recursive: true });
-
-  // Create all subdirectories
-  for (const folder of FOLDER_STRUCTURE) {
-    const target = join(dir, folder);
-    if (!existsSync(target)) {
-      mkdirSync(target, { recursive: true });
-      ok(folder + '/');
-    } else {
-      info(folder + '/  (exists)');
-    }
-  }
-
-  // Create seed files
   console.log('');
-  for (const { path: relPath, content } of SEED_FILES) {
-    const target = join(dir, relPath);
-    if (!existsSync(target)) {
-      writeFileSync(target, content, 'utf8');
-      ok(relPath);
-    } else {
-      info(`${relPath}  (exists)`);
-    }
-  }
+  console.log('  ' + green('✓') + ' Project: ' + bold(projectName) + ' ' + dim('(' + slug + ')'));
 
-  // Write a minimal status.toon if it doesn't exist
-  const statusPath = join(dir, 'status.toon');
-  if (!existsSync(statusPath)) {
-    const statusContent = [
-      `project: ${slug}`,
-      `phase: discovery`,
-      `active_feature_id: null`,
-      `paused: false`,
-      `created_at: ${isoNow()}`,
-      `codevision_version: ${CV_VERSION}`,
-    ].join('\n') + '\n';
-    writeFileSync(statusPath, statusContent, 'utf8');
-    ok('status.toon');
+  // ── Step 2: Artifact store location ──────────────────────────────────────
+
+  section('Step 2 of 4 — Artifact storage');
+  console.log('');
+  console.log(dim('  Where should CodeVision store your project artifacts?'));
+  console.log('');
+
+  const storeChoice = await select({
+    message: 'Storage location:',
+    choices: [
+      {
+        name: 'This project  ' + dim('(portable — .cv/ inside your repo, commit it to git)'),
+        value: 'project',
+        short: 'Project (.cv/)',
+      },
+      {
+        name: 'My system     ' + dim('(global — ~/.codevision/projects/<slug>/, stays outside repo)'),
+        value: 'system',
+        short: 'System (~/.codevision/)',
+      },
+    ],
+  });
+
+  const storeMode  = storeChoice; // 'project' | 'system'
+  const artifactRoot = storeMode === 'project'
+    ? join(cwd, '.cv')
+    : join(CV_SYSTEM_PROJECTS, slug);
+
+  console.log('');
+  if (storeMode === 'project') {
+    ok('Artifacts → ' + cyan(join(cwd, '.cv') + '/'));
   } else {
-    info('status.toon  (exists)');
+    ok('Artifacts → ' + cyan(join(CV_SYSTEM_PROJECTS, slug) + '/'));
   }
 
-  // Print next step
-  console.log(`
-${bold('Done.')} Project structure created at:
-${dim(dir)}
+  // ── Step 3: AI tool selection ─────────────────────────────────────────────
 
-${bold('Next step:')} Open your AI assistant and run:
+  section('Step 3 of 4 — AI tool(s)');
+  console.log('');
+  console.log(dim('  Select which AI tool(s) you use. Commands will be installed into'));
+  console.log(dim('  the correct folder for each tool (inside your current project directory).'));
+  console.log('');
 
-  ${green('/cv.init')}
+  const selected = await checkbox({
+    message: 'AI tool(s): (↑↓ navigate, Space select, Enter confirm)',
+    choices: WIZARD_TARGETS.map(t => ({
+      name: t.name,
+      value: t.value,
+      checked: t.value === 'claude-code',
+    })),
+    instructions: false,
+    validate: () => true,
+  });
 
-This will define your project mission and configuration.
-`);
-}
+  const targets = WIZARD_TARGETS.filter(t => selected.includes(t.value));
 
-/**
- * cv fetch <slug> [--full]
- *
- * Prints the artifact paths that should be loaded into AI context.
- * Default: phase-aware (only relevant artifacts for current phase).
- * --full: all artifacts.
- *
- * Output is intended to be piped into an AI context loader or copied
- * into a Cursor/Claude project context configuration.
- */
-function cmdFetch(args) {
-  const slug = args.find(a => !a.startsWith('--'));
-  const full = args.includes('--full');
+  // ── Step 4a: Create artifact folder structure ─────────────────────────────
 
-  if (!slug) die('Usage: cv fetch <slug> [--full]');
+  section('Step 4 of 4 — Creating project structure');
+  console.log('');
 
-  const dir = projectDir(slug);
-  if (!existsSync(dir)) {
-    die(`Project "${slug}" not found.\n  Run: cv init ${slug}`);
+  if (existsSync(artifactRoot)) {
+    console.log(yellow('  Directory already exists — adding missing items only.'));
+    console.log('');
   }
 
-  // Read current phase from status.toon
-  const statusPath = join(dir, 'status.toon');
-  let phase = 'discovery';
-  if (existsSync(statusPath)) {
-    const lines = readFileSync(statusPath, 'utf8').split('\n');
-    const phaseLine = lines.find(l => l.startsWith('phase:'));
-    if (phaseLine) phase = phaseLine.split(':')[1].trim();
+  mkdirSync(artifactRoot, { recursive: true });
+  const rootLabel = storeMode === 'project' ? '.cv' : `~/.codevision/projects/${slug}`;
+
+  for (const f of ARTIFACT_FOLDERS) {
+    const t = join(artifactRoot, f);
+    if (!existsSync(t)) { mkdirSync(t); ok(rootLabel + '/' + f + '/'); }
+    else { info(rootLabel + '/' + f + '/  (exists)'); }
   }
+  console.log('');
 
-  // Phase → relevant artifacts
-  const PHASE_ARTIFACTS = {
-    discovery: ['mission.md', 'status.toon', 'chronicles/'],
-    planning: ['mission.md', 'status.toon', 'chronicles/', 'features/'],
-    clarify: ['mission.md', 'status.toon', 'features/', 'chronicles/'],
-    design: ['mission.md', 'status.toon', 'features/', 'specs/'],
-    engineering: ['mission.md', 'status.toon', 'features/', 'specs/', 'tasks/'],
-    review: ['mission.md', 'status.toon', 'features/', 'specs/', 'tasks/', 'ledger/'],
-    done: ['mission.md', 'status.toon', 'ledger/'],
-  };
-
-  const ALL_ARTIFACTS = [
-    'mission.md', 'status.toon', 'config.toon',
-    'chronicles/', 'features/', 'specs/', 'tasks/',
-    'ledger/', 'components/', 'variables/', 'contracts/',
+  // Seed initial files
+  const now = isoNow();
+  const seeds = [
+    {
+      p: 'product.md',
+      c: `# Product — ${projectName}\n<!-- Run /cv.product to define this. -->\n\n## Elevator Pitch\n[TBD]\n`,
+    },
+    {
+      p: 'status.toon',
+      c: toToon({
+        spec_version: '2.0',
+        project: slug,
+        name: projectName,
+        current_phase: 'initialization',
+        active_lead: 'project_lead',
+        active_feature_id: '',
+        active_checkpoint_id: '',
+        paused: 'false',
+        last_command: 'cv init',
+        cv_version: CV_VERSION,
+        created_at: now,
+      }),
+    },
+    {
+      p: 'mission.md',
+      c: `# Mission — ${projectName}\n<!-- Populated by /cv.init (AI command). -->\n\n## North Star\n[TBD]\n\n## Problem Statement\n[TBD]\n\n## Target Users\n[TBD]\n\n## Success Definition\n[TBD]\n\n## Non-Goals\n[TBD]\n`,
+    },
+    {
+      p: 'ledger/decisions.md',
+      c: `# Decision Ledger\n\n[${now}] [cv init] Project initialized | SLUG: ${slug} | STORE: ${storeMode}\n`,
+    },
+    { p: 'ledger/changes.md',       c: '# Change Log\n' },
+    { p: 'components/registry.md',  c: '# Component Registry\n' },
+    { p: 'variables/tokens.md',     c: '# Design Tokens\n' },
+    { p: 'variables/naming.md',     c: '# Naming Conventions\n' },
   ];
 
-  const artifacts = full ? ALL_ARTIFACTS : (PHASE_ARTIFACTS[phase] || ALL_ARTIFACTS);
+  for (const { p, c } of seeds) {
+    const t = join(artifactRoot, p);
+    if (!existsSync(t)) { writeFileSync(t, c, 'utf8'); ok(rootLabel + '/' + p); }
+    else { info(rootLabel + '/' + p + '  (exists)'); }
+  }
 
-  console.log(`\n${bold('cv fetch')} ${green(slug)} ${full ? '(full)' : `(phase: ${phase})`}\n`);
-  console.log('Artifacts to load into AI context:\n');
+  // Write config.toon — always overwrite so it reflects current choices
+  const configToon = toToon({
+    project: slug,
+    name: projectName,
+    store_mode: storeMode,
+    cwd,
+    codevision_version: CV_VERSION,
+    created_at: now,
+  });
+  writeFileSync(join(artifactRoot, 'config.toon'), configToon);
+  ok(rootLabel + '/config.toon');
 
-  for (const artifact of artifacts) {
-    const fullPath = join(dir, artifact);
-    if (existsSync(fullPath)) {
-      console.log(`  ${green('✓')} ${fullPath}`);
-    } else {
-      console.log(`  ${dim('·')} ${fullPath}  ${dim('(not yet created)')}`);
+  // Register in global index (always, regardless of store mode, so cv status works)
+  mkdirSync(CV_HOME, { recursive: true });
+  const registryPath = join(CV_HOME, 'registry.toon');
+  let registry = {};
+  if (existsSync(registryPath)) {
+    try { registry = parseToon(readFileSync(registryPath, 'utf8')); } catch { /* ignore */ }
+  }
+  registry[slug] = JSON.stringify({ cwd, store_mode: storeMode, artifact_root: artifactRoot });
+  writeFileSync(registryPath, Object.entries(registry).map(([k, v]) => `${k}: ${v}`).join('\n') + '\n');
+
+  console.log('');
+
+  // ── Step 4b: Install command files into AI tool directories ───────────────
+
+  if (!targets.length) {
+    info('No AI tool selected — skipping command installation.');
+    info('Run ' + bold('cv init --force') + ' to install commands later.');
+    console.log('');
+  } else {
+    console.log(bold('  Installing commands:'));
+    console.log('');
+
+    for (const t of targets) {
+      console.log('  ' + bold(t.name));
+
+      if (t.type === 'subdir') {
+        // All tools get files from the unified commands/ dir into their own subfolder
+        const dest = join(cwd, t.destDir);
+        const { installed, skipped } = installFiles(CV_COMMANDS, dest, { force });
+        if (installed) ok(installed + ' files → ' + t.destDir + '/');
+        if (skipped)   info(skipped + ' skipped (use --force to overwrite)');
+        if (!installed && !skipped) warn('No command files found in ' + CV_COMMANDS + ' — run cv upgrade');
+      }
+
+      if (t.type === 'append') {
+        const dst = join(cwd, t.destFile);
+        const MARK_START = '<!-- CodeVision: BEGIN';
+        const MARK_END   = '<!-- CodeVision: END -->';
+        const block = buildCvBlock(slug);
+        let ex = existsSync(dst) ? readFileSync(dst, 'utf8') : '';
+        if (ex.includes(MARK_START)) {
+          if (force) {
+            const s = ex.indexOf(MARK_START);
+            const e = ex.indexOf(MARK_END) + MARK_END.length;
+            writeFileSync(dst, ex.slice(0, s) + block.trimStart() + ex.slice(e + 1));
+            ok('Updated CV block in ' + t.destFile);
+          } else {
+            info('CV block already in ' + t.destFile + ' (use --force to replace)');
+          }
+        } else {
+          if (t.destFile.includes('/')) {
+            mkdirSync(join(cwd, t.destFile.split('/').slice(0, -1).join('/')), { recursive: true });
+          }
+          writeFileSync(dst, ex + (ex.endsWith('\n') ? '' : '\n') + block);
+          ok('Appended CV block to ' + t.destFile);
+        }
+      }
+
+      console.log('');
     }
   }
 
-  console.log(`\n${dim('Tip: Pass these paths to your AI context loader, or copy into Cursor / Claude project context.')}\n`);
+  // ── Summary ───────────────────────────────────────────────────────────────
+
+  console.log(bold(green('✓ CodeVision is ready.')));
+  console.log('');
+  console.log('  Project  : ' + bold(projectName) + ' ' + dim('(' + slug + ')'));
+  console.log('  Artifacts: ' + cyan(artifactRoot + '/'));
+  console.log('  Mode     : ' + (storeMode === 'project'
+    ? green('project') + dim(' (.cv/ in repo)')
+    : green('system')  + dim(' (~/.codevision/projects/' + slug + '/)')));
+  console.log('');
+  console.log(bold('Next steps:'));
+  console.log('');
+  console.log('  1. ' + cyan('/cv.init') + '        ' + dim('Define your mission (run inside your AI tool)'));
+  console.log('  2. ' + cyan('/cv.chronicle') + '   ' + dim('Write the first user journey'));
+  console.log('  3. ' + cyan('/cv.prd') + '         ' + dim('Author the product requirements document'));
+  console.log('');
+  console.log(dim('  Tip: run ') + bold('cv fetch ' + slug) + dim(' to load artifacts into AI context'));
+  console.log('');
 }
 
-/**
- * cv status [<slug>]
- *
- * Prints the current state of a project without invoking AI.
- */
+// ─── cmd: fetch ───────────────────────────────────────────────────────────────
+
+function cmdFetch(args) {
+  const slugHint = args.find(a => !a.startsWith('--'));
+  const full     = args.includes('--full');
+
+  const { root, slug, config } = resolveArtifactRoot(slugHint);
+
+  let phase = 'initialization';
+  const sp = join(root, 'status.toon');
+  if (existsSync(sp)) {
+    try { phase = parseToon(readFileSync(sp, 'utf8')).current_phase || phase; } catch { /* ignore */ }
+  }
+
+  const PHASE_ARTIFACTS = {
+    initialization: ['mission.md', 'status.toon'],
+    discovery:      ['mission.md', 'status.toon', 'chronicles/', 'stakeholders/'],
+    planning:       ['mission.md', 'status.toon', 'chronicles/', 'features/'],
+    engineering:    ['mission.md', 'status.toon', 'features/', 'specs/'],
+    specification:  ['mission.md', 'status.toon', 'features/', 'specs/'],
+    tasks:          ['mission.md', 'status.toon', 'specs/', 'tasks/'],
+    implementation: ['mission.md', 'status.toon', 'specs/', 'tasks/', 'contracts/'],
+    review:         ['mission.md', 'status.toon', 'specs/', 'tasks/', 'ledger/'],
+    validation:     ['mission.md', 'status.toon', 'tasks/', 'ledger/'],
+  };
+  const ALL = [
+    'mission.md', 'product.md', 'status.toon', 'chronicles/', 'stakeholders/',
+    'features/', 'specs/', 'tasks/', 'ledger/', 'components/', 'variables/', 'contracts/',
+  ];
+  const arts = full ? ALL : (PHASE_ARTIFACTS[phase] || ALL);
+
+  console.log('\n' + bold('cv fetch') + ' ' + green(slug) + ' ' + (full ? '(full)' : '(phase: ' + phase + ')'));
+  console.log(dim('Artifact root: ' + root) + '\n');
+
+  for (const a of arts) {
+    const fp = join(root, a);
+    if (existsSync(fp)) console.log('  ' + green('✓') + ' ' + fp);
+    else console.log('  ' + dim('·') + ' ' + fp + '  ' + dim('(not created yet)'));
+  }
+  console.log('\n' + dim('Tip: Pass these paths to your AI context loader.') + '\n');
+}
+
+// ─── cmd: status ──────────────────────────────────────────────────────────────
+
 function cmdStatus(args) {
-  const slug = args[0];
+  const slugHint = args.find(a => !a.startsWith('--'));
+  const cwd = process.cwd();
 
-  if (!slug) {
-    // List all projects
-    if (!existsSync(PROJECTS_DIR)) {
-      console.log('\nNo projects found. Run: cv init <slug>\n');
-      return;
-    }
-    const projects = readdirSync(PROJECTS_DIR, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name);
-
-    if (!projects.length) {
-      console.log('\nNo projects found. Run: cv init <slug>\n');
-      return;
+  // No slug — try to detect locally, then show all system projects
+  if (!slugHint) {
+    const localConfig = join(cwd, '.cv', 'config.toon');
+    if (existsSync(localConfig)) {
+      const cfg = readConfigToon(localConfig);
+      if (cfg) return _printProjectStatus(join(cwd, '.cv'), cfg.project, cfg);
     }
 
-    console.log(`\n${bold('CodeVision Projects')}\n`);
-    for (const p of projects) {
-      const statusPath = join(PROJECTS_DIR, p, 'status.toon');
-      let phase = 'unknown';
-      if (existsSync(statusPath)) {
-        const lines = readFileSync(statusPath, 'utf8').split('\n');
-        const pl = lines.find(l => l.startsWith('phase:'));
-        if (pl) phase = pl.split(':')[1].trim();
-      }
-      console.log(`  ${green(p)}  ${dim(phase)}`);
+    // Show all system projects
+    const allProjects = _listAllProjects();
+    if (!allProjects.length) {
+      console.log('\nNo CodeVision projects found. Run: ' + bold('cv init') + '\n');
+      return;
+    }
+    console.log('\n' + bold('CodeVision Projects') + '\n');
+    for (const { slug, root, config } of allProjects) {
+      const phase = config?.current_phase || 'unknown';
+      const name  = config?.name || slug;
+      const mode  = config?.store_mode || '?';
+      console.log(
+        '  ' + cyan(slug.padEnd(24)) +
+        bold(name.padEnd(28)) +
+        dim(phase.padEnd(18)) +
+        dim('(' + mode + ')')
+      );
     }
     console.log('');
     return;
   }
 
-  const dir = projectDir(slug);
-  if (!existsSync(dir)) die(`Project "${slug}" not found.`);
+  const { root, slug, config } = resolveArtifactRoot(slugHint);
+  _printProjectStatus(root, slug, config);
+}
 
-  const statusPath = join(dir, 'status.toon');
-  if (!existsSync(statusPath)) die(`status.toon not found in ${dir}`);
-
-  console.log(`\n${bold('Status')} — ${green(slug)}\n`);
-  const lines = readFileSync(statusPath, 'utf8').split('\n').filter(Boolean);
-  for (const line of lines) {
-    const [key, ...rest] = line.split(':');
-    const val = rest.join(':').trim();
-    if (val && val !== 'null') {
-      console.log(`  ${bold(key.trim().padEnd(22))} ${val}`);
-    }
+function _printProjectStatus(root, slug, config) {
+  const sp = join(root, 'status.toon');
+  if (!existsSync(sp)) die('status.toon not found in ' + root);
+  const s = parseToon(readFileSync(sp, 'utf8'));
+  console.log('\n' + bold('Status') + ' — ' + cyan(slug) + '\n');
+  for (const [k, v] of Object.entries(s)) {
+    if (v !== null && v !== undefined && v !== '')
+      console.log('  ' + bold(String(k).padEnd(24)) + ' ' + String(v));
+  }
+  if (config?.store_mode) {
+    console.log('  ' + bold('store_mode'.padEnd(24)) + ' ' + config.store_mode);
+    console.log('  ' + bold('artifact_root'.padEnd(24)) + ' ' + root);
   }
   console.log('');
 }
 
-/**
- * cv lint [<slug>]
- *
- * Validates folder structure and gate conditions.
- * Exits with code 1 if any blocking issues are found.
- */
+function _listAllProjects() {
+  const projects = [];
+  // 1. Local project in cwd
+  const local = join(process.cwd(), '.cv', 'config.toon');
+  if (existsSync(local)) {
+    const cfg = readConfigToon(local);
+    if (cfg) projects.push({ slug: cfg.project, root: join(process.cwd(), '.cv'), config: cfg });
+  }
+  // 2. System projects
+  if (existsSync(CV_SYSTEM_PROJECTS)) {
+    for (const d of readdirSync(CV_SYSTEM_PROJECTS, { withFileTypes: true }).filter(d => d.isDirectory())) {
+      const root = join(CV_SYSTEM_PROJECTS, d.name);
+      const cfg  = readConfigToon(join(root, 'config.toon'));
+      if (!projects.find(p => p.slug === d.name)) {
+        projects.push({ slug: d.name, root, config: cfg });
+      }
+    }
+  }
+  return projects;
+}
+
+// ─── cmd: lint ────────────────────────────────────────────────────────────────
+
 function cmdLint(args) {
-  const slug = args[0];
-  if (!slug) die('Usage: cv lint <slug>');
+  const slugHint = args.find(a => !a.startsWith('--'));
+  const { root, slug } = resolveArtifactRoot(slugHint);
 
-  const dir = projectDir(slug);
-  if (!existsSync(dir)) die(`Project "${slug}" not found.\n  Run: cv init ${slug}`);
+  console.log('\n' + bold('cv lint') + ' — ' + cyan(slug) + '\n');
+  let errors = 0, warnings = 0;
 
-  console.log(`\n${bold('cv lint')} — ${green(slug)}\n`);
-
-  let errors = 0;
-  let warnings = 0;
-
-  // Check required root files
-  const required = ['mission.md', 'status.toon'];
-  for (const f of required) {
-    const p = join(dir, f);
-    if (existsSync(p)) {
-      ok(f);
-    } else {
-      fail(`${f}  ${red('MISSING — required before any command')}`);
-      errors++;
-    }
+  // Core file checks
+  for (const f of ['mission.md', 'status.toon', 'product.md']) {
+    if (existsSync(join(root, f))) ok(f);
+    else { fail(f + '  ' + red('MISSING')); errors++; }
+  }
+  // Folder checks
+  for (const f of ARTIFACT_FOLDERS) {
+    if (!existsSync(join(root, f))) { warn(f + '/  ' + yellow('missing')); warnings++; }
   }
 
-  // Check required folders
-  for (const folder of FOLDER_STRUCTURE) {
-    const p = join(dir, folder);
-    if (!existsSync(p)) {
-      warn(`${folder}/  ${yellow('missing')}`);
-      warnings++;
-    }
-  }
-
-  // Check features and their gate conditions
-  const featuresDir = join(dir, 'features');
-  if (existsSync(featuresDir)) {
-    const feats = readdirSync(featuresDir, { withFileTypes: true })
-      .filter(d => d.isDirectory())
-      .map(d => d.name);
-
-    if (feats.length > 0) {
-      console.log(`\n${bold('Feature Gates')}\n`);
+  // Feature gate checks
+  const featDir = join(root, 'features');
+  if (existsSync(featDir)) {
+    const feats = readdirSync(featDir, { withFileTypes: true })
+      .filter(d => d.isDirectory()).map(d => d.name);
+    if (feats.length) {
+      console.log('\n' + bold('Feature Gates') + '\n');
       for (const feat of feats) {
-        const featDir = join(featuresDir, feat);
-        const approvalsPath = join(featDir, 'approvals.toon');
-
+        const ap = join(featDir, feat, 'approvals.toon');
         let approvals = {};
-        if (existsSync(approvalsPath)) {
-          // Parse simple toon: "prd\n  status: approved"
-          const raw = readFileSync(approvalsPath, 'utf8');
-          let current = null;
-          for (const line of raw.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) continue;
-            if (!line.startsWith(' ') && !line.startsWith('\t')) {
-              current = trimmed.replace(':', '');
-              approvals[current] = {};
-            } else if (current && trimmed.startsWith('status:')) {
-              approvals[current].status = trimmed.split(':')[1].trim();
-            }
-          }
+        if (existsSync(ap)) {
+          try { approvals = parseToon(readFileSync(ap, 'utf8')); } catch { /* ignore */ }
         }
-
-        const getStatus = (key) => approvals[key]?.status ?? 'missing';
-        const prdStatus = getStatus('prd');
-        const erdStatus = getStatus('erd');
-        const specStatus = getStatus('spec');
-
-        const statusIcon = (s) => s === 'approved' ? green('approved') : s === 'pending' ? yellow('pending') : s === 'missing' ? dim('—') : dim(s);
-
-        console.log(`  ${bold(feat)}`);
-        console.log(`    prd    ${statusIcon(prdStatus)}`);
-        console.log(`    erd    ${statusIcon(erdStatus)}${prdStatus !== 'approved' ? dim('  (blocked: prd not approved)') : ''}`);
-        console.log(`    spec   ${statusIcon(specStatus)}${(prdStatus !== 'approved' || erdStatus !== 'approved') ? dim('  (blocked: prd + erd required)') : ''}`);
-
-        if (prdStatus !== 'approved' && existsSync(join(featDir, 'prd.md'))) {
-          warn(`${feat}: prd.md exists but is not approved`);
+        const gs = k => approvals[k]?.status ?? (approvals[k] ?? 'missing');
+        const ic = s => s === 'approved' ? green('approved') : s === 'pending' ? yellow('pending') : dim('—');
+        const prd = gs('prd'), erd = gs('erd'), spec = gs('spec');
+        console.log('  ' + bold(feat));
+        console.log('    prd    ' + ic(prd));
+        console.log('    erd    ' + ic(erd) + (prd !== 'approved' ? dim('  (blocked: prd not approved)') : ''));
+        console.log('    spec   ' + ic(spec) + ((prd !== 'approved' || erd !== 'approved') ? dim('  (blocked)') : ''));
+        if (prd !== 'approved' && existsSync(join(featDir, feat, 'prd.md'))) {
+          warn(feat + ': prd.md exists but not approved');
           warnings++;
         }
       }
     }
   }
 
-  // Summary
   console.log('');
-  if (errors === 0 && warnings === 0) {
-    console.log(`${green('All checks passed.')}\n`);
-  } else {
-    if (errors > 0) console.log(`${red(`${errors} error(s) found — blocking.`)}`);
-    if (warnings > 0) console.log(`${yellow(`${warnings} warning(s) found.`)}`);
+  if (!errors && !warnings) { console.log(green('All checks passed.') + '\n'); }
+  else {
+    if (errors)   console.log(red(errors + ' error(s) found — blocking.'));
+    if (warnings) console.log(yellow(warnings + ' warning(s) found.'));
     console.log('');
   }
-
   if (errors > 0) process.exit(1);
 }
 
-// ─── cmd: upgrade ────────────────────────────────────────────────────────────
+// ─── cmd: upgrade ─────────────────────────────────────────────────────────────
+//
+// Downloads CLI files and the unified commands/ folder from GitHub.
+// Command files are stored in ~/.codevision/commands/ and then copied
+// into each project's AI tool directories by cv init.
 
 async function cmdUpgrade(args) {
-  const checkOnly = args.includes('--check');
+  const checkOnly   = args.includes('--check');
   const migrateOnly = args.includes('--migrate');
-  const force = args.includes('--force');
+  const force       = args.includes('--force');
 
-  const execAsync = promisify(exec);
-
-  console.log(`\n${bold('CodeVision Upgrade')}\n`);
-
-  // ── Step 1: Check latest version on GitHub ───────────────────────────────
+  console.log('\n' + bold('CodeVision Upgrade') + '\n');
   const installedVersion = getInstalledVersion();
-  console.log(`Installed version : ${bold(`v${installedVersion}`)}`);
-  process.stdout.write('Checking GitHub   : ');
+  console.log('Installed : ' + bold('v' + installedVersion));
+  process.stdout.write('GitHub    : ');
 
   let latestVersion;
   try {
-    const versionUrl = `${CV_GITHUB_RAW}/VERSION`;
-    latestVersion = await new Promise((resolve, reject) => {
-      https.get(versionUrl, res => {
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode} fetching VERSION from GitHub`));
-          return;
-        }
-        let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(data.trim()));
-      }).on('error', reject);
-    });
-    console.log(bold(`v${latestVersion}`));
+    latestVersion = await fetchText(CV_GITHUB_RAW + '/VERSION');
+    latestVersion = latestVersion.trim();
+    console.log(bold('v' + latestVersion));
   } catch (err) {
     console.log(red('failed'));
-    die(`Could not reach GitHub: ${err.message}\n\nCheck that CV_GITHUB_REPO is set correctly in cv.js (currently: ${CV_GITHUB_REPO})`);
+    die('Could not reach GitHub: ' + err.message + '\n\nCheck CV_GITHUB_REPO in cv.js (currently: ' + CV_GITHUB_REPO + ')');
   }
 
   const needsUpgrade = semverLt(installedVersion, latestVersion);
-
   if (!needsUpgrade && !force && !migrateOnly) {
-    console.log(`\n${green('Already up to date.')}\n`);
-    // Still run migrations in case the version file is newer than the project folders
+    console.log('\n' + green('Already up to date.') + '\n');
     await cmdMigrate(['--silent']);
     return;
   }
-
   if (checkOnly) {
     if (needsUpgrade) {
-      console.log(`\n${yellow(`Update available: v${installedVersion} → v${latestVersion}`)}`);
-      console.log(`Run ${bold('cv upgrade')} to install.\n`);
+      console.log('\n' + yellow('Update available: v' + installedVersion + ' → v' + latestVersion));
+      console.log('Run ' + bold('cv upgrade') + ' to install.\n');
     }
     return;
   }
+  if (migrateOnly) { await cmdMigrate([]); return; }
 
-  if (migrateOnly) {
-    await cmdMigrate([]);
-    return;
-  }
+  console.log('\n' + bold('Downloading v' + latestVersion + '...') + '\n');
 
-  // ── Step 2: Download updated files ──────────────────────────────────────
-  console.log(`\n${bold('Downloading v' + latestVersion + '...')}`);
-
-  const FILES_TO_UPDATE = [
-    { remote: 'cli/cv.js', local: join(CV_ROOT, 'cli', 'cv.js') },
-    { remote: 'cli/cv-stories.js', local: join(CV_ROOT, 'cli', 'cv-stories.js') },
-    { remote: 'cli/cv-migrate.js', local: join(CV_ROOT, 'cli', 'cv-migrate.js') },
-    { remote: 'cli/package.json', local: join(CV_ROOT, 'cli', 'package.json') },
-    { remote: 'commands/_core.md', local: join(CV_ROOT, 'commands', '_core.md') },
-    { remote: 'commands/cv.init.md', local: join(CV_ROOT, 'commands', 'cv.init.md') },
-    { remote: 'commands/cv.chronicle.md', local: join(CV_ROOT, 'commands', 'cv.chronicle.md') },
-    { remote: 'commands/cv.clarify.md', local: join(CV_ROOT, 'commands', 'cv.clarify.md') },
-    { remote: 'commands/cv.persona.md', local: join(CV_ROOT, 'commands', 'cv.persona.md') },
-    { remote: 'commands/cv.product.md', local: join(CV_ROOT, 'commands', 'cv.product.md') },
+  // ── Static CLI files ──────────────────────────────────────────────────────
+  const STATIC_FILES = [
+    { r: `${REPO_CLI_DIR}/cv.js`,         l: join(CV_CLI_DIR, 'cv.js') },
+    { r: `${REPO_CLI_DIR}/cv-stories.js`, l: join(CV_LIB_DIR, 'cv-stories.js') },
+    { r: `${REPO_CLI_DIR}/cv-migrate.js`, l: join(CV_LIB_DIR, 'cv-migrate.js') },
+    { r: `${REPO_CLI_DIR}/package.json`,  l: join(CV_CLI_DIR, 'package.json') },
   ];
 
-  // Ensure CLI and commands dirs exist
-  mkdirSync(join(CV_ROOT, 'cli'), { recursive: true });
-  mkdirSync(join(CV_ROOT, 'commands'), { recursive: true });
-
-  let downloadErrors = 0;
-  for (const file of FILES_TO_UPDATE) {
-    process.stdout.write(`  ${file.remote.padEnd(36)} `);
-    try {
-      await new Promise((resolve, reject) => {
-        const url = `${CV_GITHUB_RAW}/${file.remote}`;
-        https.get(url, res => {
-          if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return; }
-          const out = createWriteStream(file.local);
-          res.pipe(out);
-          out.on('finish', resolve);
-          out.on('error', reject);
-        }).on('error', reject);
-      });
-      console.log(green('✓'));
-    } catch (err) {
-      console.log(red(`✗ ${err.message}`));
-      downloadErrors++;
-    }
+  for (const d of [CV_CLI_DIR, CV_LIB_DIR, CV_COMMANDS]) {
+    mkdirSync(d, { recursive: true });
   }
 
-  if (downloadErrors > 0) {
-    console.log(`\n${red(`${downloadErrors} file(s) failed to download.`)} The upgrade may be incomplete.`);
-    console.log(`Run ${bold('cv upgrade --force')} to retry, or download manually from github.com/${CV_GITHUB_REPO}\n`);
+  let errs = 0;
+  for (const f of STATIC_FILES) {
+    process.stdout.write('  ' + f.r.padEnd(40) + ' ');
+    try {
+      await downloadFile(CV_GITHUB_RAW + '/' + f.r, f.l);
+      console.log(green('✓'));
+    } catch (err) { console.log(red('✗ ' + err.message)); errs++; }
+  }
+
+  // ── Dynamic command files (enumerate from GitHub API) ─────────────────────
+  console.log('');
+  console.log('  ' + bold('Fetching command file list...'));
+  let commandFiles = [];
+  try {
+    const apiUrl = CV_GITHUB_API + '/' + REPO_CMDS_DIR;
+    const body   = await fetchText(apiUrl, { headers: { 'User-Agent': 'codevision-cli', Accept: 'application/vnd.github.v3+json' } });
+    const entries = JSON.parse(body);
+    commandFiles  = entries.filter(e => e.type === 'file' && e.name.endsWith('.md'));
+    console.log('  ' + dim('Found ' + commandFiles.length + ' command files'));
+  } catch (err) {
+    console.log(red('  Could not enumerate command files: ' + err.message));
+    console.log(yellow('  Falling back to static list...'));
+    // Fallback: hardcoded list of known command files
+    commandFiles = [
+      '_STYLE', '_core', 'cv-bug', 'cv-change', 'cv-component', 'cv-contract',
+      'cv-feature', 'cv-help', 'cv-implement', 'cv-init', 'cv-review', 'cv-scaffold',
+      'cv-status', 'cv-tasks', 'cv-vars', 'cv.chronicle', 'cv.clarify', 'cv.init',
+      'cv.organize', 'cv.persona', 'cv.product',
+    ].map(n => ({ name: n + '.md', download_url: `${CV_GITHUB_RAW}/${REPO_CMDS_DIR}/${n}.md` }));
+  }
+
+  console.log('');
+  for (const f of commandFiles) {
+    const dest = join(CV_COMMANDS, f.name);
+    process.stdout.write('  commands/' + f.name.padEnd(34) + ' ');
+    try {
+      await downloadFile(f.download_url || (CV_GITHUB_RAW + '/' + REPO_CMDS_DIR + '/' + f.name), dest);
+      console.log(green('✓'));
+    } catch (err) { console.log(red('✗ ' + err.message)); errs++; }
+  }
+
+  if (errs > 0) {
+    console.log('\n' + red(errs + ' file(s) failed.') + ' Run cv upgrade --force to retry.\n');
     process.exit(1);
   }
 
-  // ── Step 3: Run migrations ───────────────────────────────────────────────
   console.log('');
   await cmdMigrate(['--from', installedVersion, '--to', latestVersion]);
-
-  // ── Step 4: Record new version ───────────────────────────────────────────
   setInstalledVersion(latestVersion);
-  console.log(`\n${green(`✓ CodeVision upgraded to v${latestVersion}`)}`);
-  console.log(`\n${bold('Next step:')} re-run ${bold('npm link')} from ~/.codevision/cli/ to update the global cv command.`);
-  console.log(`  cd ~/.codevision/cli && npm link\n`);
+  console.log('\n' + green('✓ Upgraded to v' + latestVersion));
+  console.log('\n' + dim('Run: cd ~/.codevision/cli && npm link') + '\n');
 }
 
 // ─── cmd: migrate ─────────────────────────────────────────────────────────────
 
 async function cmdMigrate(args) {
-  const silent = args.includes('--silent');
+  const silent  = args.includes('--silent');
   const fromIdx = args.indexOf('--from');
-  const toIdx = args.indexOf('--to');
+  const toIdx   = args.indexOf('--to');
   const fromVer = fromIdx >= 0 ? args[fromIdx + 1] : getInstalledVersion();
-  const toVer = toIdx >= 0 ? args[toIdx + 1] : CV_VERSION;
+  const toVer   = toIdx   >= 0 ? args[toIdx + 1]   : CV_VERSION;
+  const log     = silent ? () => {} : m => console.log(m);
+  const warnLog = m => console.log(yellow(m));
 
-  const log = silent ? () => { } : (msg) => console.log(msg);
-  const warn = (msg) => console.log(yellow(msg));
+  const allProjects = _listAllProjects();
+  if (!allProjects.length) { log('No projects found.'); return; }
+  if (!silent) console.log(bold('Running migrations') + ' (v' + fromVer + ' → v' + toVer + ')\n');
 
-  if (!existsSync(PROJECTS_DIR)) {
-    log('No projects found — nothing to migrate.');
-    return;
-  }
-
-  const projects = readdirSync(PROJECTS_DIR, { withFileTypes: true })
-    .filter(d => d.isDirectory())
-    .map(d => d.name);
-
-  if (projects.length === 0) {
-    log('No projects found — nothing to migrate.');
-    return;
-  }
-
-  if (!silent) {
-    console.log(`${bold('Running migrations')} (v${fromVer} → v${toVer})\n`);
-  }
-
-  let anyMigrated = false;
-  for (const slug of projects) {
-    const dir = projectDir(slug);
-    // Read project-level version if it exists; fall back to installed version
-    const projVersionPath = join(dir, '.cv-version');
-    const projVersion = existsSync(projVersionPath)
-      ? readFileSync(projVersionPath, 'utf8').trim()
-      : fromVer;
-
-    const pending = MIGRATIONS.filter(m =>
-      semverLt(projVersion, m.version) && !semverLt(toVer, m.version)
-    );
-
-    if (pending.length === 0) {
-      log(`  ${bold(slug)} — up to date`);
-      continue;
-    }
-
-    anyMigrated = true;
-    log(`  ${bold(slug)} — applying ${pending.length} migration(s)`);
-    const ok = migrateProject(dir, projVersion, toVer, { log, warn });
-
-    if (ok) {
-      // Record the new version in the project folder
-      writeFileSync(projVersionPath, toVer);
-      log(`  ${green('✓')} ${slug} → v${toVer}`);
-    } else {
-      warn(`  ${red('✗')} ${slug} — migration had errors, see above`);
-    }
+  let any = false;
+  for (const { slug, root } of allProjects) {
+    const pvp = join(root, '.cv-version');
+    const pv  = existsSync(pvp) ? readFileSync(pvp, 'utf8').trim() : fromVer;
+    const pending = MIGRATIONS.filter(m => semverLt(pv, m.version) && !semverLt(toVer, m.version));
+    if (!pending.length) { log('  ' + bold(slug) + ' — up to date'); continue; }
+    any = true;
+    log('  ' + bold(slug) + ' — applying ' + pending.length + ' migration(s)');
+    const success = migrateProject(root, pv, toVer, { log, warn: warnLog });
+    if (success) { writeFileSync(pvp, toVer); log('  ' + green('✓') + ' ' + slug + ' → v' + toVer); }
+    else warnLog('  ' + red('✗') + ' ' + slug + ' — migration errors, see above');
     log('');
   }
+  if (!any && !silent) console.log(green('All projects up to date.') + '\n');
+}
 
-  if (!anyMigrated && !silent) {
-    console.log(`${green('All projects are up to date.')}\n`);
-  }
+// ─── Network helpers ──────────────────────────────────────────────────────────
+
+function fetchText(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const opts = { headers: { 'User-Agent': 'codevision-cli', ...options.headers } };
+    https.get(url, opts, res => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        return fetchText(res.headers.location, options).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode + ' — ' + url)); return; }
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => resolve(d));
+    }).on('error', reject);
+  });
+}
+
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const opts = { headers: { 'User-Agent': 'codevision-cli' } };
+    https.get(url, opts, res => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        return downloadFile(res.headers.location, dest).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode)); return; }
+      const out = createWriteStream(dest);
+      res.pipe(out);
+      out.on('finish', resolve);
+      out.on('error', reject);
+    }).on('error', reject);
+  });
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
@@ -601,13 +861,13 @@ async function cmdMigrate(args) {
 const [, , command, ...rest] = process.argv;
 
 const COMMANDS = {
-  init: cmdInit,
-  fetch: cmdFetch,
-  status: cmdStatus,
-  lint: cmdLint,
+  init:    args => cmdInit(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
+  fetch:   cmdFetch,
+  status:  cmdStatus,
+  lint:    cmdLint,
   stories: cmdStories,
-  upgrade: cmdUpgrade,
-  migrate: cmdMigrate,
+  upgrade: args => cmdUpgrade(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
+  migrate: args => cmdMigrate(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
 };
 
 if (!command || command === '--help' || command === '-h') {
@@ -615,32 +875,36 @@ if (!command || command === '--help' || command === '-h') {
 ${bold('cv')} — CodeVision CLI v${CV_VERSION}
 
 ${bold('Usage:')}
-  cv init <slug>              Create project folder structure
-  cv fetch <slug> [--full]    Show artifacts to load into AI context
-  cv status [<slug>]          Print project state
-  cv lint <slug>              Validate structure and gate conditions
+  cv init [name]              Interactive setup wizard
+  cv fetch [slug] [--full]    Show artifacts to load into AI context
+  cv status [slug]            Print project state
+  cv lint [slug]              Validate structure and gate conditions
   cv stories <slug> <source>  Parse a story document into CHR files
-                              source: .md .txt .docx or Google Docs URL
-                              --interactive  Full Q&A per story before writing
   cv upgrade                  Upgrade CLI and commands from GitHub
   cv upgrade --check          Check if an update is available
-  cv upgrade --migrate        Run project migrations only (no file downloads)
-  cv migrate                  Run pending migrations on all local projects
+  cv upgrade --migrate        Run migrations only (no file downloads)
+  cv migrate                  Run pending migrations on all projects
+
+${bold('Flags:')}
+  --force   Overwrite existing command files during init
+
+${bold('Artifact storage:')}
+  Project mode  .cv/ inside your project directory (committed to git)
+  System mode   ~/.codevision/projects/<slug>/
+
+${bold('Supported AI tools:')}
+${WIZARD_TARGETS.map(t => '  ' + t.name.padEnd(20) + dim(t.destDir || t.destFile || '')).join('\n')}
 
 ${bold('Examples:')}
-  cv init aiko-health
+  cv init
+  cv init "Aiko Health"
   cv fetch aiko-health
-  cv fetch aiko-health --full
   cv lint aiko-health
-
-${bold('Artifact store:')} ~/.codevision/projects/
+  cv status
 `);
   process.exit(0);
 }
 
 const handler = COMMANDS[command];
-if (!handler) {
-  die(`Unknown command: "${command}"\nRun cv --help for usage.`);
-}
-
+if (!handler) die('Unknown command: "' + command + '"\nRun cv --help for usage.');
 handler(rest);
