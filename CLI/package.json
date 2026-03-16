@@ -1,0 +1,25 @@
+{
+  "name": "codevision-cli",
+  "version": "0.1.0",
+  "description": "CodeVision CLI — spec-driven development framework",
+  "type": "module",
+  "bin": {
+    "cv": "./cv.js"
+  },
+  "scripts": {
+    "test": "node cv.js --help"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "codevision",
+    "spec-driven",
+    "ai",
+    "development"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "mammoth": "^1.11.0"
+  }
+}
