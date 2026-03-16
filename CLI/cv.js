@@ -27,8 +27,23 @@ const CV_SYSTEM_PROJECTS = join(CV_HOME, 'projects');
 const CV_COMMANDS    = join(CV_HOME, 'commands');
 const CV_CLI_DIR     = join(CV_HOME, 'cli');
 const CV_LIB_DIR     = join(CV_HOME, 'lib');
-const CV_VERSION     = '2.3.0';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const CV_VERSION_FILE = join(CV_HOME, 'version');
+
+let CV_VERSION = '2.2.0'; // fallback
+try {
+  // If running from repo, read the package.json file
+  const pkgInfo = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8'));
+  if (pkgInfo.version) CV_VERSION = pkgInfo.version;
+} catch (e) {
+  try {
+    // If installed globally, read the downloaded version string
+    CV_VERSION = readFileSync(CV_VERSION_FILE, 'utf8').trim();
+  } catch (e2) { /* ignore */ }
+}
 const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI';
 const CV_GITHUB_RAW  = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
 const CV_GITHUB_API  = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
@@ -738,8 +753,9 @@ async function cmdUpgrade(args) {
 
   let latestVersion;
   try {
-    latestVersion = await fetchText(CV_GITHUB_RAW + '/VERSION?t=' + Date.now());
-    latestVersion = latestVersion.trim();
+    const pkgRaw = await fetchText(`${CV_GITHUB_RAW}/${REPO_CLI_DIR}/package.json?t=${Date.now()}`);
+    const pkgInfo = JSON.parse(pkgRaw);
+    latestVersion = pkgInfo.version;
     console.log(bold('v' + latestVersion));
   } catch (err) {
     console.log(red('failed'));
