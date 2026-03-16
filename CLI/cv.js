@@ -753,7 +753,8 @@ async function cmdUpgrade(args) {
 
   let latestVersion;
   try {
-    const pkgRaw = await fetchText(`${CV_GITHUB_RAW}/${REPO_CLI_DIR}/package.json?t=${Date.now()}`);
+    const pkgUrl = `${CV_GITHUB_API}/${REPO_CLI_DIR}/package.json?t=${Date.now()}`;
+    const pkgRaw = await fetchText(pkgUrl, { headers: { Accept: 'application/vnd.github.v3.raw' } });
     const pkgInfo = JSON.parse(pkgRaw);
     latestVersion = pkgInfo.version;
     console.log(bold('v' + latestVersion));
