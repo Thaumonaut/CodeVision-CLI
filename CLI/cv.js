@@ -738,7 +738,7 @@ async function cmdUpgrade(args) {
 
   let latestVersion;
   try {
-    latestVersion = await fetchText(CV_GITHUB_RAW + '/VERSION');
+    latestVersion = await fetchText(CV_GITHUB_RAW + '/VERSION?t=' + Date.now());
     latestVersion = latestVersion.trim();
     console.log(bold('v' + latestVersion));
   } catch (err) {
