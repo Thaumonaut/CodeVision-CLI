@@ -33,7 +33,7 @@ import { cmdStories } from './cv-stories.js';
 const CV_ROOT = join(homedir(), '.codevision');
 const PROJECTS_DIR = join(CV_ROOT, 'projects');
 const CV_VERSION = '2.2.0';
-const CV_GITHUB_REPO = 'your-username/codevision'; // UPDATE this after creating the repo
+const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI'; // UPDATE this after creating the repo
 const CV_GITHUB_RAW = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/main`;
 const CV_VERSION_FILE = join(CV_ROOT, 'version');
 
@@ -51,9 +51,9 @@ const FOLDER_STRUCTURE = [
 
 // Seeded empty files that must exist for other commands
 const SEED_FILES = [
-  { path: 'ledger/decisions.md',   content: '# Decision Ledger\n\n<!-- Entries written by /cv.* commands -->\n' },
-  { path: 'ledger/changes.md',     content: '# Change Log\n\n<!-- Entries written by /cv.change -->\n' },
-  { path: 'components/registry.md',content: '# Component Registry\n\n<!-- Entries written by /cv.component -->\n' },
+  { path: 'ledger/decisions.md', content: '# Decision Ledger\n\n<!-- Entries written by /cv.* commands -->\n' },
+  { path: 'ledger/changes.md', content: '# Change Log\n\n<!-- Entries written by /cv.change -->\n' },
+  { path: 'components/registry.md', content: '# Component Registry\n\n<!-- Entries written by /cv.component -->\n' },
 ];
 
 // ─── Version tracking ────────────────────────────────────────────────────────
@@ -80,13 +80,13 @@ function slugValid(slug) {
   return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug);
 }
 
-function bold(str)  { return `\x1b[1m${str}\x1b[0m`; }
+function bold(str) { return `\x1b[1m${str}\x1b[0m`; }
 function green(str) { return `\x1b[32m${str}\x1b[0m`; }
-function red(str)   { return `\x1b[31m${str}\x1b[0m`; }
-function dim(str)   { return `\x1b[2m${str}\x1b[0m`; }
-function yellow(str){ return `\x1b[33m${str}\x1b[0m`; }
+function red(str) { return `\x1b[31m${str}\x1b[0m`; }
+function dim(str) { return `\x1b[2m${str}\x1b[0m`; }
+function yellow(str) { return `\x1b[33m${str}\x1b[0m`; }
 
-function ok(msg)   { console.log(`  ${green('✓')} ${msg}`); }
+function ok(msg) { console.log(`  ${green('✓')} ${msg}`); }
 function fail(msg) { console.log(`  ${red('✗')} ${msg}`); }
 function info(msg) { console.log(`  ${dim('·')} ${msg}`); }
 function warn(msg) { console.log(`  ${yellow('!')} ${msg}`); }
@@ -223,13 +223,13 @@ function cmdFetch(args) {
 
   // Phase → relevant artifacts
   const PHASE_ARTIFACTS = {
-    discovery:   ['mission.md', 'status.toon', 'chronicles/'],
-    planning:    ['mission.md', 'status.toon', 'chronicles/', 'features/'],
-    clarify:     ['mission.md', 'status.toon', 'features/', 'chronicles/'],
-    design:      ['mission.md', 'status.toon', 'features/', 'specs/'],
+    discovery: ['mission.md', 'status.toon', 'chronicles/'],
+    planning: ['mission.md', 'status.toon', 'chronicles/', 'features/'],
+    clarify: ['mission.md', 'status.toon', 'features/', 'chronicles/'],
+    design: ['mission.md', 'status.toon', 'features/', 'specs/'],
     engineering: ['mission.md', 'status.toon', 'features/', 'specs/', 'tasks/'],
-    review:      ['mission.md', 'status.toon', 'features/', 'specs/', 'tasks/', 'ledger/'],
-    done:        ['mission.md', 'status.toon', 'ledger/'],
+    review: ['mission.md', 'status.toon', 'features/', 'specs/', 'tasks/', 'ledger/'],
+    done: ['mission.md', 'status.toon', 'ledger/'],
   };
 
   const ALL_ARTIFACTS = [
@@ -416,9 +416,9 @@ function cmdLint(args) {
 // ─── cmd: upgrade ────────────────────────────────────────────────────────────
 
 async function cmdUpgrade(args) {
-  const checkOnly  = args.includes('--check');
+  const checkOnly = args.includes('--check');
   const migrateOnly = args.includes('--migrate');
-  const force      = args.includes('--force');
+  const force = args.includes('--force');
 
   const execAsync = promisify(exec);
 
@@ -475,16 +475,16 @@ async function cmdUpgrade(args) {
   console.log(`\n${bold('Downloading v' + latestVersion + '...')}`);
 
   const FILES_TO_UPDATE = [
-    { remote: 'cli/cv.js',          local: join(CV_ROOT, 'cli', 'cv.js') },
-    { remote: 'cli/cv-stories.js',  local: join(CV_ROOT, 'cli', 'cv-stories.js') },
-    { remote: 'cli/cv-migrate.js',  local: join(CV_ROOT, 'cli', 'cv-migrate.js') },
-    { remote: 'cli/package.json',   local: join(CV_ROOT, 'cli', 'package.json') },
-    { remote: 'commands/_core.md',       local: join(CV_ROOT, 'commands', '_core.md') },
-    { remote: 'commands/cv.init.md',     local: join(CV_ROOT, 'commands', 'cv.init.md') },
-    { remote: 'commands/cv.chronicle.md',local: join(CV_ROOT, 'commands', 'cv.chronicle.md') },
-    { remote: 'commands/cv.clarify.md',  local: join(CV_ROOT, 'commands', 'cv.clarify.md') },
-    { remote: 'commands/cv.persona.md',  local: join(CV_ROOT, 'commands', 'cv.persona.md') },
-    { remote: 'commands/cv.product.md',  local: join(CV_ROOT, 'commands', 'cv.product.md') },
+    { remote: 'cli/cv.js', local: join(CV_ROOT, 'cli', 'cv.js') },
+    { remote: 'cli/cv-stories.js', local: join(CV_ROOT, 'cli', 'cv-stories.js') },
+    { remote: 'cli/cv-migrate.js', local: join(CV_ROOT, 'cli', 'cv-migrate.js') },
+    { remote: 'cli/package.json', local: join(CV_ROOT, 'cli', 'package.json') },
+    { remote: 'commands/_core.md', local: join(CV_ROOT, 'commands', '_core.md') },
+    { remote: 'commands/cv.init.md', local: join(CV_ROOT, 'commands', 'cv.init.md') },
+    { remote: 'commands/cv.chronicle.md', local: join(CV_ROOT, 'commands', 'cv.chronicle.md') },
+    { remote: 'commands/cv.clarify.md', local: join(CV_ROOT, 'commands', 'cv.clarify.md') },
+    { remote: 'commands/cv.persona.md', local: join(CV_ROOT, 'commands', 'cv.persona.md') },
+    { remote: 'commands/cv.product.md', local: join(CV_ROOT, 'commands', 'cv.product.md') },
   ];
 
   // Ensure CLI and commands dirs exist
@@ -532,13 +532,13 @@ async function cmdUpgrade(args) {
 // ─── cmd: migrate ─────────────────────────────────────────────────────────────
 
 async function cmdMigrate(args) {
-  const silent   = args.includes('--silent');
-  const fromIdx  = args.indexOf('--from');
-  const toIdx    = args.indexOf('--to');
-  const fromVer  = fromIdx >= 0 ? args[fromIdx + 1] : getInstalledVersion();
-  const toVer    = toIdx   >= 0 ? args[toIdx   + 1] : CV_VERSION;
+  const silent = args.includes('--silent');
+  const fromIdx = args.indexOf('--from');
+  const toIdx = args.indexOf('--to');
+  const fromVer = fromIdx >= 0 ? args[fromIdx + 1] : getInstalledVersion();
+  const toVer = toIdx >= 0 ? args[toIdx + 1] : CV_VERSION;
 
-  const log  = silent ? () => {} : (msg) => console.log(msg);
+  const log = silent ? () => { } : (msg) => console.log(msg);
   const warn = (msg) => console.log(yellow(msg));
 
   if (!existsSync(PROJECTS_DIR)) {
@@ -598,13 +598,13 @@ async function cmdMigrate(args) {
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
-const [,, command, ...rest] = process.argv;
+const [, , command, ...rest] = process.argv;
 
 const COMMANDS = {
-  init:    cmdInit,
-  fetch:   cmdFetch,
-  status:  cmdStatus,
-  lint:    cmdLint,
+  init: cmdInit,
+  fetch: cmdFetch,
+  status: cmdStatus,
+  lint: cmdLint,
   stories: cmdStories,
   upgrade: cmdUpgrade,
   migrate: cmdMigrate,
