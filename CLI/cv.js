@@ -24,11 +24,11 @@ import { cmdAsk } from './cv-prompt.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const CV_HOME        = join(homedir(), '.codevision');
+const CV_HOME = join(homedir(), '.codevision');
 const CV_SYSTEM_PROJECTS = join(CV_HOME, 'projects');
-const CV_COMMANDS    = join(CV_HOME, 'commands');
-const CV_CLI_DIR     = join(CV_HOME, 'cli');
-const CV_LIB_DIR     = join(CV_HOME, 'lib');
+const CV_COMMANDS = join(CV_HOME, 'Commands');
+const CV_CLI_DIR = join(CV_HOME, 'CLI');
+const CV_LIB_DIR = join(CV_HOME, 'lib');
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -47,10 +47,10 @@ try {
   } catch (e2) { /* ignore */ }
 }
 const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI';
-const CV_GITHUB_RAW  = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
-const CV_GITHUB_API  = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
-const REPO_CLI_DIR   = 'CLI';
-const REPO_CMDS_DIR  = 'commands';
+const CV_GITHUB_RAW = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
+const CV_GITHUB_API = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
+const REPO_CLI_DIR = 'CLI';
+const REPO_CMDS_DIR = 'commands';
 
 // Subfolder name used inside each tool's rules/commands directory
 const CV_SUBFOLDER = 'codevision';
@@ -128,18 +128,18 @@ function setInstalledVersion(v) { writeFileSync(CV_VERSION_FILE, v); }
 
 // ─── Colour / output helpers ──────────────────────────────────────────────────
 
-function bold(s)   { return `\x1b[1m${s}\x1b[0m`; }
-function green(s)  { return `\x1b[32m${s}\x1b[0m`; }
-function red(s)    { return `\x1b[31m${s}\x1b[0m`; }
-function dim(s)    { return `\x1b[2m${s}\x1b[0m`; }
+function bold(s) { return `\x1b[1m${s}\x1b[0m`; }
+function green(s) { return `\x1b[32m${s}\x1b[0m`; }
+function red(s) { return `\x1b[31m${s}\x1b[0m`; }
+function dim(s) { return `\x1b[2m${s}\x1b[0m`; }
 function yellow(s) { return `\x1b[33m${s}\x1b[0m`; }
-function cyan(s)   { return `\x1b[36m${s}\x1b[0m`; }
-function ok(m)     { console.log('  ' + green('✓') + ' ' + m); }
-function fail(m)   { console.log('  ' + red('✗') + ' ' + m); }
-function info(m)   { console.log('  ' + dim('·') + ' ' + m); }
-function warn(m)   { console.log('  ' + yellow('!') + ' ' + m); }
-function die(m)    { console.error('\n' + red('Error:') + ' ' + m + '\n'); process.exit(1); }
-function isoNow()  { return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'); }
+function cyan(s) { return `\x1b[36m${s}\x1b[0m`; }
+function ok(m) { console.log('  ' + green('✓') + ' ' + m); }
+function fail(m) { console.log('  ' + red('✗') + ' ' + m); }
+function info(m) { console.log('  ' + dim('·') + ' ' + m); }
+function warn(m) { console.log('  ' + yellow('!') + ' ' + m); }
+function die(m) { console.error('\n' + red('Error:') + ' ' + m + '\n'); process.exit(1); }
+function isoNow() { return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'); }
 function section(title) {
   console.log('');
   console.log(bold(title));
@@ -232,8 +232,8 @@ function resolveArtifactRoot(slugHint, cwd = process.cwd()) {
     const sysRoot = join(CV_SYSTEM_PROJECTS, slugHint);
     if (existsSync(sysRoot)) {
       const cfg = readConfigJson(join(sysRoot, 'config.json')) ||
-                  readConfigToon(join(sysRoot, 'config.toon')) ||
-                  { project: slugHint, store_mode: 'system' };
+        readConfigToon(join(sysRoot, 'config.toon')) ||
+        { project: slugHint, store_mode: 'system' };
       return { root: sysRoot, slug: slugHint, config: cfg };
     }
   }
@@ -244,9 +244,9 @@ function resolveArtifactRoot(slugHint, cwd = process.cwd()) {
       .filter(d => d.isDirectory()).map(d => d.name);
     if (dirs.length === 1) {
       const slug = dirs[0];
-      const cfg  = readConfigJson(join(CV_SYSTEM_PROJECTS, slug, 'config.json')) ||
-                   readConfigToon(join(CV_SYSTEM_PROJECTS, slug, 'config.toon')) ||
-                   { project: slug, store_mode: 'system' };
+      const cfg = readConfigJson(join(CV_SYSTEM_PROJECTS, slug, 'config.json')) ||
+        readConfigToon(join(CV_SYSTEM_PROJECTS, slug, 'config.toon')) ||
+        { project: slug, store_mode: 'system' };
       return { root: join(CV_SYSTEM_PROJECTS, slug), slug, config: cfg };
     }
   }
@@ -293,9 +293,9 @@ function buildCvBlock(slug) {
 // ─── cmd: init ────────────────────────────────────────────────────────────────
 
 async function cmdInit(args) {
-  const force  = args.includes('--force');
+  const force = args.includes('--force');
   const nonFlag = args.filter(a => !a.startsWith('--'));
-  const cwd    = process.cwd();
+  const cwd = process.cwd();
 
   console.log('');
   console.log(bold('╔══════════════════════════════════════╗'));
@@ -376,7 +376,7 @@ async function cmdInit(args) {
     ],
   });
 
-  const storeMode  = storeChoice; // 'project' | 'system'
+  const storeMode = storeChoice; // 'project' | 'system'
   const artifactRoot = storeMode === 'project'
     ? join(cwd, '.cv')
     : join(CV_SYSTEM_PROJECTS, slug);
@@ -512,14 +512,14 @@ async function cmdInit(args) {
         const dest = join(cwd, t.destDir);
         const { installed, skipped } = installFiles(CV_COMMANDS, dest, { force });
         if (installed) ok(installed + ' files → ' + t.destDir + '/');
-        if (skipped)   info(skipped + ' skipped (use --force to overwrite)');
+        if (skipped) info(skipped + ' skipped (use --force to overwrite)');
         if (!installed && !skipped) warn('No command files found in ' + CV_COMMANDS + ' — run cv upgrade');
       }
 
       if (t.type === 'append') {
         const dst = join(cwd, t.destFile);
         const MARK_START = '<!-- CodeVision: BEGIN';
-        const MARK_END   = '<!-- CodeVision: END -->';
+        const MARK_END = '<!-- CodeVision: END -->';
         const block = buildCvBlock(slug);
         let ex = existsSync(dst) ? readFileSync(dst, 'utf8') : '';
         if (ex.includes(MARK_START)) {
@@ -549,11 +549,10 @@ async function cmdInit(args) {
   console.log(bold(green('✓ CodeVision is ready.')));
   console.log('');
   console.log('  Project  : ' + bold(projectName) + ' ' + dim('(' + slug + ')'));
-  console.log('  Author   : ' + bold(authorName.trim()));
   console.log('  Artifacts: ' + cyan(artifactRoot + '/'));
   console.log('  Mode     : ' + (storeMode === 'project'
     ? green('project') + dim(' (.cv/ in repo)')
-    : green('system')  + dim(' (~/.codevision/projects/' + slug + '/)')));
+    : green('system') + dim(' (~/.codevision/projects/' + slug + '/)')));
   console.log('');
   console.log(bold('Next steps:'));
   console.log('');
@@ -599,7 +598,7 @@ function reinstallCommandsForProject(config, projectCwd, { force = true } = {}) 
 
 function cmdFetch(args) {
   const slugHint = args.find(a => !a.startsWith('--'));
-  const full     = args.includes('--full');
+  const full = args.includes('--full');
 
   const { root, slug, config } = resolveArtifactRoot(slugHint);
 
@@ -608,13 +607,13 @@ function cmdFetch(args) {
   if (s) phase = s.phase || s.current_phase || phase;
 
   const PHASE_ARTIFACTS = {
-    explore:  ['mission.md', 'constitution.md', 'status.json', 'personas/', 'chronicles/'],
-    define:   ['mission.md', 'constitution.md', 'status.json', 'chronicles/', 'features/'],
-    specify:  ['mission.md', 'status.json', 'features/'],
-    task:     ['mission.md', 'status.json', 'features/'],
-    build:    ['mission.md', 'constitution.md', 'status.json', 'features/', 'contracts/'],
-    triage:   ['mission.md', 'status.json', 'features/'],
-    prove:    ['mission.md', 'status.json', 'features/', 'ledger/'],
+    explore: ['mission.md', 'constitution.md', 'status.json', 'personas/', 'chronicles/'],
+    define: ['mission.md', 'constitution.md', 'status.json', 'chronicles/', 'features/'],
+    specify: ['mission.md', 'status.json', 'features/'],
+    task: ['mission.md', 'status.json', 'features/'],
+    build: ['mission.md', 'constitution.md', 'status.json', 'features/', 'contracts/'],
+    triage: ['mission.md', 'status.json', 'features/'],
+    prove: ['mission.md', 'status.json', 'features/', 'ledger/'],
   };
   const ALL = [
     'mission.md', 'constitution.md', 'status.json',
@@ -656,8 +655,8 @@ function cmdStatus(args) {
     console.log('\n' + bold('CodeVision Projects') + '\n');
     for (const { slug, root, config } of allProjects) {
       const phase = config?.current_phase || 'unknown';
-      const name  = config?.name || slug;
-      const mode  = config?.store_mode || '?';
+      const name = config?.name || slug;
+      const mode = config?.store_mode || '?';
       console.log(
         '  ' + cyan(slug.padEnd(24)) +
         bold(name.padEnd(28)) +
@@ -686,11 +685,11 @@ function _printProjectStatus(root, slug, config) {
   }
 
   const display = {
-    phase:              s.phase || s.current_phase,
-    active_feature:     s.active_feature || s.active_feature_id || '—',
+    phase: s.phase || s.current_phase,
+    active_feature: s.active_feature || s.active_feature_id || '—',
     validation_blocked: s.validation_blocked ?? false,
-    last_command:       s.last_command || '—',
-    last_updated:       s.last_updated || '—',
+    last_command: s.last_command || '—',
+    last_updated: s.last_updated || '—',
   };
   for (const [k, v] of Object.entries(display)) {
     console.log('  ' + bold(String(k).padEnd(24)) + ' ' + String(v));
@@ -707,15 +706,15 @@ function _listAllProjects() {
   // 1. Local project in cwd (config.json v3, config.toon v2 fallback)
   const cwd = process.cwd();
   const localCfg = readConfigJson(join(cwd, '.cv', 'config.json')) ||
-                   readConfigToon(join(cwd, '.cv', 'config.toon'));
+    readConfigToon(join(cwd, '.cv', 'config.toon'));
   if (localCfg) projects.push({ slug: localCfg.project, root: join(cwd, '.cv'), config: localCfg });
 
   // 2. System projects
   if (existsSync(CV_SYSTEM_PROJECTS)) {
     for (const d of readdirSync(CV_SYSTEM_PROJECTS, { withFileTypes: true }).filter(d => d.isDirectory())) {
       const root = join(CV_SYSTEM_PROJECTS, d.name);
-      const cfg  = readConfigJson(join(root, 'config.json')) ||
-                   readConfigToon(join(root, 'config.toon'));
+      const cfg = readConfigJson(join(root, 'config.json')) ||
+        readConfigToon(join(root, 'config.toon'));
       if (!projects.find(p => p.slug === d.name)) {
         projects.push({ slug: d.name, root, config: cfg });
       }
@@ -759,7 +758,7 @@ function cmdLint(args) {
       console.log('\n' + bold('Features') + '\n');
       for (const feat of feats) {
         const briefPath = join(featDir, feat, '.brief');
-        const hasBrief  = existsSync(briefPath);
+        const hasBrief = existsSync(briefPath);
         console.log('  ' + bold(feat) + (hasBrief ? '' : dim('  (no .brief)')));
         if (!hasBrief) { warn(feat + ': .brief missing — run /cv.define'); warnings++; }
       }
@@ -769,7 +768,7 @@ function cmdLint(args) {
   console.log('');
   if (!errors && !warnings) { console.log(green('All checks passed.') + '\n'); }
   else {
-    if (errors)   console.log(red(errors + ' error(s) found — blocking.'));
+    if (errors) console.log(red(errors + ' error(s) found — blocking.'));
     if (warnings) console.log(yellow(warnings + ' warning(s) found.'));
     console.log('');
   }
@@ -783,9 +782,9 @@ function cmdLint(args) {
 // into each project's AI tool directories by cv init.
 
 async function cmdUpgrade(args) {
-  const checkOnly   = args.includes('--check');
+  const checkOnly = args.includes('--check');
   const migrateOnly = args.includes('--migrate');
-  const force       = args.includes('--force');
+  const force = args.includes('--force');
 
   console.log('\n' + bold('CodeVision Upgrade') + '\n');
   const installedVersion = getInstalledVersion();
@@ -823,10 +822,10 @@ async function cmdUpgrade(args) {
 
   // ── Static CLI files ──────────────────────────────────────────────────────
   const STATIC_FILES = [
-    { r: `${REPO_CLI_DIR}/cv.js`,         l: join(CV_CLI_DIR, 'cv.js') },
+    { r: `${REPO_CLI_DIR}/cv.js`, l: join(CV_CLI_DIR, 'cv.js') },
     { r: `${REPO_CLI_DIR}/cv-stories.js`, l: join(CV_LIB_DIR, 'cv-stories.js') },
     { r: `${REPO_CLI_DIR}/cv-migrate.js`, l: join(CV_LIB_DIR, 'cv-migrate.js') },
-    { r: `${REPO_CLI_DIR}/package.json`,  l: join(CV_CLI_DIR, 'package.json') },
+    { r: `${REPO_CLI_DIR}/package.json`, l: join(CV_CLI_DIR, 'package.json') },
   ];
 
   for (const d of [CV_CLI_DIR, CV_LIB_DIR, CV_COMMANDS]) {
@@ -848,9 +847,9 @@ async function cmdUpgrade(args) {
   let commandFiles = [];
   try {
     const apiUrl = CV_GITHUB_API + '/' + REPO_CMDS_DIR;
-    const body   = await fetchText(apiUrl, { headers: { 'User-Agent': 'codevision-cli', Accept: 'application/vnd.github.v3+json' } });
+    const body = await fetchText(apiUrl, { headers: { 'User-Agent': 'codevision-cli', Accept: 'application/vnd.github.v3+json' } });
     const entries = JSON.parse(body);
-    commandFiles  = entries.filter(e => e.type === 'file' && e.name.endsWith('.md'));
+    commandFiles = entries.filter(e => e.type === 'file' && e.name.endsWith('.md'));
     console.log('  ' + dim('Found ' + commandFiles.length + ' command files'));
   } catch (err) {
     console.log(red('  Could not enumerate command files: ' + err.message));
@@ -907,12 +906,12 @@ async function cmdUpgrade(args) {
 // ─── cmd: migrate ─────────────────────────────────────────────────────────────
 
 async function cmdMigrate(args) {
-  const silent  = args.includes('--silent');
+  const silent = args.includes('--silent');
   const fromIdx = args.indexOf('--from');
-  const toIdx   = args.indexOf('--to');
+  const toIdx = args.indexOf('--to');
   const fromVer = fromIdx >= 0 ? args[fromIdx + 1] : getInstalledVersion();
-  const toVer   = toIdx   >= 0 ? args[toIdx + 1]   : CV_VERSION;
-  const log     = silent ? () => {} : m => console.log(m);
+  const toVer = toIdx >= 0 ? args[toIdx + 1] : CV_VERSION;
+  const log = silent ? () => { } : m => console.log(m);
   const warnLog = m => console.log(yellow(m));
 
   const allProjects = _listAllProjects();
@@ -922,7 +921,7 @@ async function cmdMigrate(args) {
   let any = false;
   for (const { slug, root } of allProjects) {
     const pvp = join(root, '.cv-version');
-    const pv  = existsSync(pvp) ? readFileSync(pvp, 'utf8').trim() : fromVer;
+    const pv = existsSync(pvp) ? readFileSync(pvp, 'utf8').trim() : fromVer;
     const pending = MIGRATIONS.filter(m => semverLt(pv, m.version) && !semverLt(toVer, m.version));
     if (!pending.length) { log('  ' + bold(slug) + ' — up to date'); continue; }
     any = true;
@@ -973,12 +972,12 @@ function downloadFile(url, dest) {
 const [, , command, ...rest] = process.argv;
 
 const COMMANDS = {
-  init:    args => cmdInit(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
-  fetch:   cmdFetch,
-  status:  cmdStatus,
-  lint:    cmdLint,
+  init: args => cmdInit(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
+  fetch: cmdFetch,
+  status: cmdStatus,
+  lint: cmdLint,
   stories: cmdStories,
-  ask:     args => cmdAsk(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
+  ask: args => cmdAsk(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
   upgrade: args => cmdUpgrade(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
   migrate: args => cmdMigrate(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
 };
