@@ -50,7 +50,7 @@ const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI';
 const CV_GITHUB_RAW = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
 const CV_GITHUB_API = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
 const REPO_CLI_DIR = 'CLI';
-const REPO_CMDS_DIR = 'commands';
+const REPO_CMDS_DIR = 'Commands';
 
 // Subfolder name used inside each tool's rules/commands directory
 const CV_SUBFOLDER = 'codevision';
