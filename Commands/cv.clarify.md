@@ -41,24 +41,29 @@ These rules are non-negotiable and apply regardless of which command is calling 
 **1. One question at a time.**
 **CRITICAL RULE**: You MUST ask EXACTLY ONE question per turn. You MUST STOP generating text immediately after presenting the multiple choice options for the current question. Waiting for the user's answer is non-negotiable. If you ask more than one question in a single response, you have failed. The conversation should feel like an interview, not a form.
 
-**2. Every question gets multiple choice.**
-Format every question with 3–4 labeled options plus a final option:
+**2. Every question uses `cv ask`.**
+Present every question by running the `cv ask` terminal command. This renders a numbered multiple-choice menu in the terminal and returns the user's selection on stdout.
 
-```
-→ Custom — I'll define it
+```bash
+# Single selection (default)
+cv ask "Question text?" \
+  "Option A — reasoning explaining what this choice implies" \
+  "Option B — reasoning" \
+  "Option C — reasoning"
+
+# Multiple selection
+cv ask --multi "Question text?" \
+  "Option A — reasoning" \
+  "Option B — reasoning" \
+  "Option C — reasoning"
 ```
 
-Options are never bare labels. Each one carries **inline reasoning** that explains what choosing it implies. The reasoning makes the choice feel real, not abstract.
+Use the stdout output as the answer and continue. The "Other — I'll type it" option is always appended automatically — do not add it yourself.
 
-Good option example:
-```
-A) Anxious — they're seeing elevated numbers without context and that's scary
-```
+Provide 3–4 options. Options are never bare labels — each one carries **inline reasoning** that explains what choosing it implies.
 
-Bad option example:
-```
-A) Anxious
-```
+Good option: `"Anxious — they're seeing elevated numbers without context and that's scary"`
+Bad option: `"Anxious"`
 
 **3. Always show progress.**
 Every question must include a progress indicator. This is required, not optional:
@@ -125,19 +130,24 @@ One question per turn. Blocking questions first, advisory questions after.
 
 Each question follows this structure:
 
+First, output the progress indicator and context sentence:
+
 ```
 **Question N of M** (blocking)
 
 [Context sentence referencing the document or prior answer]
-
-[The question, stated plainly]
-
-A) [Label — reasoning explaining what this choice implies]
-B) [Label — reasoning]
-C) [Label — reasoning]
-D) [Label — reasoning]  ← include if genuinely needed; 3 is often enough
-→ Custom — I'll define it
 ```
+
+Then run `cv ask` to present the question:
+
+```bash
+cv ask "[The question, stated plainly]" \
+  "[Label — reasoning explaining what this choice implies]" \
+  "[Label — reasoning]" \
+  "[Label — reasoning]"
+```
+
+Include 3 options, or 4 if genuinely needed. The "Other — I'll type it" option is added automatically.
 
 ### Step 4 — Pre-Draft Recap
 After all questions are answered, produce the recap paragraph (see Core Rules §6).

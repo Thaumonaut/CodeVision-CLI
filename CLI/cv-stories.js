@@ -21,6 +21,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { join, extname } from 'path';
 import { homedir } from 'os';
 import * as readline from 'readline';
+import { ask, askChoice } from './cv-prompt.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -43,33 +44,6 @@ const ok   = msg => console.log(`  ${green('✓')} ${msg}`);
 const warn = msg => console.log(`  ${yellow('!')} ${msg}`);
 const info = msg => console.log(`  ${dim('·')} ${msg}`);
 const die  = msg => { console.error(`\n${red('Error:')} ${msg}\n`); process.exit(1); };
-
-// ─── Readline helper ──────────────────────────────────────────────────────────
-
-function ask(rl, question) {
-  return new Promise(resolve => rl.question(question, resolve));
-}
-
-async function askChoice(rl, prompt, options) {
-  console.log(`\n${prompt}\n`);
-  options.forEach((opt, i) => console.log(`  ${cyan(String(i + 1))}  ${opt}`));
-  console.log(`  ${cyan(String(options.length + 1))}  → Custom — I'll define it`);
-  console.log('');
-
-  while (true) {
-    const raw = await ask(rl, `  Choice (1–${options.length + 1}): `);
-    const n = parseInt(raw.trim(), 10);
-    if (n === options.length + 1) {
-      const custom = await ask(rl, '  Your answer: ');
-      return custom.trim();
-    }
-    if (n >= 1 && n <= options.length) {
-      // Return just the label part before the em-dash if present
-      return options[n - 1].split(' — ')[0].trim();
-    }
-    console.log(`  ${red('Please enter a number between 1 and')} ${options.length + 1}`);
-  }
-}
 
 // ─── Document reading ─────────────────────────────────────────────────────────
 

@@ -9,39 +9,68 @@ Your job:
 
 ---
 
+## Workflow Overview
+
+```
+EXPLORE               DEFINE                  SPECIFY    TASK       BUILD
+──────────────────    ──────────────────────  ─────────  ─────────  ──────────
+/cv.persona           /cv.define              /cv.spec   /cv.tasks  /cv.build
+/cv.roleplay          /cv.write                                     /cv.debug
+/cv.chronicle         /cv.reconcile
+/cv.discover          /cv.approve
+
+TRIAGE      PROVE         CHANGE MGMT        NAVIGATION
+──────────  ──────────    ─────────────────  ─────────────────────
+/cv.triage  /cv.validate  /cv.change         /cv.status
+            /cv.review    /cv.rewind         /cv.continue
+                                             /cv.history
+```
+
+---
+
 ## Command Reference
 
-### Discovery & Planning (Product Lead)
-- **/cv.init** — Bootstraps the mission and config.
-- **/cv.mission** — Updates the north star and non-goals.
-- **/cv.chronicle** — Defines a user journey or epic.
-- **/cv.feature** — Defines feature abstraction linking chronicles.
-- **/cv.prd** — Q&A to author a Product Requirements Document.
-- **/cv.clarify** — Scans active artifact for gaps; asks multiple-choice questions.
+### Explore Phase (Product Lead)
+- **/cv.init** — Bootstraps the project: mission.md, constitution.md, and folder structure.
+- **/cv.persona** — Build a Persona document via Q&A. Produces `PERS-###.md` with Voice & Behaviour Profile for simulation.
+- **/cv.roleplay** — Story Discovery simulation. AI enters persona mode; you play the product. Run after `/cv.persona`, before `/cv.chronicle`.
+- **/cv.chronicle** — Compile a Chronicle (user journey narrative) from a roleplay simulation or direct input. Produces `CHR-###.md`.
+- **/cv.discover** — Feature Discovery. Turns a Chronicle into a Feature Map (`map.md`) by exploring scope breadth-first. Run after `/cv.chronicle`.
 
-### Engineering Design (Architecture Lead)
-- **/cv.erd** — Draft Entity-Relationship Diagram from an approved PRD.
-- **/cv.vars** — Update design tokens / naming rules.
-- **/cv.component** — Define or revise a reusable UI/architecture component.
+### Define Phase (Product Lead + Engineering)
+- **/cv.define** — Depth-first exploration of a single sub-feature (MB-##). Fills ledger entries until clarity threshold (≥ 80%) is reached.
+- **/cv.write** — Compile PRD, UIRD, ERD, and AC from the Exploration Ledger. Run after `/cv.define` resolves all blocking questions.
+- **/cv.reconcile** — Resolve conflicts between UIRD and ERD before approving. Required if `/cv.write` detected cross-document conflicts.
+- **/cv.approve** — Review and approve Define documents. Unlocks `/cv.spec` when all four documents are approved.
 
-### Implementation & Review (Implementation Lead / QA Lead)
-- **/cv.spec** — Generate a technical spec from an approved PRD and ERD.
-- **/cv.tasks** — Break spec into ordereable, verifiable checkpoints and tasks.
-- **/cv.implement** — Write code strictly within defined task scope.
-- **/cv.bug** — Narrow fix (<50 lines) without scope expansion.
-- **/cv.review** — Verify implementation against acceptance criteria.
+### Specify + Task
+- **/cv.spec** — Generate technical spec from approved PRD + UIRD + ERD + AC. Produces `spec.md`. Gate: all source documents must be approved.
+- **/cv.tasks** — Generate ordered, checkpointed task list from approved spec. Gate: spec must be approved.
 
-### Change Management & Governance
+### Build
+- **/cv.build** — Implement tasks using `.brief` as primary context. Pauses at checkpoints. Gate: tasks must be approved.
+- **/cv.debug** — Narrow fix (<50 lines) without scope expansion. Tier 1 only — does not touch spec or tasks.
+
+### Triage + Prove
+- **/cv.triage** — Classify a gap found during Build. Three tiers: implementation detail (continue), spec revision (rewind to Define), assumption wrong (rewind to Explore).
+- **/cv.validate** — Run automated checks (tests, lint, type-check). Reports CVVAL-### codes.
+- **/cv.review** — AI reviews implementation against Acceptance Criteria. Reports pass/fail per criterion.
+
+### Change Management
 - **/cv.change** — Classify and route a scope change request.
-- **/cv.replan** — Light spec adjustment from implementation learnings.
-- **/cv.respec** — Major spec revision (triggers re-approval chain).
-- **/cv.contract** — Propose a change to an immutable constraint rule.
-- **/cv.invite** — Codify a stakeholder persona perspective.
+- **/cv.rewind** — Explicitly reverse a decision. AI identifies affected ledger entries and minimum rewind level.
 
 ### Navigation & State
-- **/cv.pause** — Pause work with context capture.
-- **/cv.continue** — Resume deterministically from artifacts.
-- **/cv.status** — Summarize current state (phase, blockers, active feature).
-- **/cv.phase** — Navigate between workflow phases.
+- **/cv.status** — Summarize current state: phase, approval states, open questions, next recommended action.
+- **/cv.continue** — Resume after interruption. Loads `.brief`, orients in 2 minutes, asks what to do next.
+- **/cv.history** — Narrative of decisions made for a feature, in order. Reads the ledger.
+
+### Legacy (still supported, maps to v3 equivalents)
+- **/cv.feature** — Define a feature abstraction (use `/cv.discover` for new work)
+- **/cv.prd** — Q&A to author a PRD directly (use `/cv.write` for ledger-sourced PRDs)
+- **/cv.clarify** — Scan active artifact for gaps (use `/cv.define` for sub-feature work)
+- **/cv.erd** — Draft ERD directly (use `/cv.write` for ledger-sourced ERDs)
+- **/cv.replan** — Light spec adjustment
+- **/cv.respec** — Major spec revision
 
 Include the Style + Question + Artifact-first + Write protocol from `_STYLE.md`.

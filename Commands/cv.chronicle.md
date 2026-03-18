@@ -1,319 +1,342 @@
 # /cv.chronicle
-<!-- cv.chronicle.md | Defines a user journey / epic as a Chronicle document. -->
-<!-- Story-first. Calls /cv.clarify in Mode B after the story is told. -->
-<!-- Standalone: includes minimum context inline if _core.md is not loaded. -->
+<!-- cv.chronicle.md | Compile a Chronicle from a roleplay debrief or direct input. -->
+<!-- Produces CHR-###.md — the user journey narrative that drives all downstream work. -->
+<!-- Run after /cv.roleplay (or directly). Gates /cv.discover. -->
 
 ---
 
 ## What This Command Does
 
-`/cv.chronicle` captures a user journey as a Chronicle — the narrative source of truth that links user experience to product features. Chronicles are not requirements. They are stories. They exist to make sure the team builds the right thing for the right person in the right emotional context.
+`/cv.chronicle` compiles a Chronicle — the user journey narrative that is the source of truth for what gets built and why. It can work from two inputs:
 
-Every PRD should trace back to a Chronicle. Every feature that lacks one is a feature built without a user in mind.
+- **From a roleplay debrief** — loads the simulation output from `/cv.roleplay` and structures it into a Chronicle. The raw material already exists; this pass formalizes it.
+- **From direct input** — the user describes the journey in their own words. The AI asks clarifying questions and compiles the document from the conversation.
 
-Invocation:
+Either way, the output is the same: a `CHR-###.md` with a Signal Block, Story State, full journey narrative, emotional arc, features implicated, and PE-### ledger entries.
+
+**Gate:** No upstream gate. Chronicles can be written at any time. However:
+- If `mission.md` doesn't exist, note it once — Chronicles are stronger when grounded in the product mission.
+- If a Persona (PERS-###) exists, it should be linked. If not, suggest `/cv.persona` in the handoff.
+
+---
+
+## Invocation
+
 ```
-/cv.chronicle              ← start a new chronicle for the active project
-/cv.chronicle CHR-###      ← review or update an existing chronicle
+/cv.chronicle                    ← start a new chronicle
+/cv.chronicle --from-roleplay    ← compile from the current /cv.roleplay debrief
+/cv.chronicle CHR-###            ← update an existing chronicle
 ```
 
 ---
 
-## Gate Check
+## Step 1 — Load Context
 
-`/cv.chronicle` has **no upstream gate** — chronicles can be written at any time. However:
+Read silently before asking anything:
 
-- If `mission.md` exists, read it before starting. It shapes every question.
-- If `mission.md` does not exist, say: "I don't see a mission defined yet. Chronicles are stronger when they trace back to the product mission. You can run `/cv.init` to define it now, or continue and add it later."
-- If `product.md` exists, read it silently. It will shape questions, generated prose, and feature identification throughout the session. Do not narrate the read — just use it.
-- If `product.md` does not exist, say once: "I don't see a product description yet. Chronicles are much stronger when they're grounded in a specific product — you can run `/cv.product` to define it, or continue and I'll ask for the key context inline." Do not repeat this warning. Do not block.
+1. `mission.md` — the product north star (shapes every question and the compiled prose)
+2. `personas/` — any existing PERS-###.md files (for persona linking)
+3. `chronicles/` — existing chronicles (to assign next ID, check for updates)
+4. If `--from-roleplay`: the roleplay debrief from the current session
 
-If `product.md` is missing, collect the minimum product context inline during Step 4 (Story Prompt) — ask the user to describe the product in one sentence before they tell the story. Store this temporarily as `[product-inline]` and use it throughout the session.
+If `mission.md` is missing:
+> "I don't see a mission defined yet. Chronicles are stronger when they trace back to the product mission — you can run `/cv.init` to define it, or continue and I'll work from what you tell me."
 
 Do not block. Continue regardless.
 
 ---
 
-## Step 1 — Load Product Context
+## Step 2 — Check Existing Chronicles and Assign ID
 
-Before asking anything, check for `product.md`.
-
-- **If it exists:** read it silently. Extract and hold:
-  - Product name and type
-  - Core user action
-  - AI role in the product
-  - Tone and voice
-  - What the product does not do (non-features)
-
-  Every chronicle produced in this session will be framed around this product. The product name appears in the chronicle header. The voice shapes the prose. The non-features are checked against implicated features — anything outside scope is flagged `[OUT OF SCOPE — confirm]` rather than silently included.
-
-- **If it does not exist:** the Gate Check warning already surfaced this. Proceed. If the user didn't define a product inline during the gate check prompt, ask before the story:
-  > "Before we write the story — in one sentence, what is the product this journey is happening in?"
-  Hold this as `[product-inline]` and use it throughout.
+- If chronicles exist: "You have [N] chronicle(s): [IDs + titles]. Are you adding a new one or updating an existing one?"
+- If updating: jump to [Updating an Existing Chronicle](#updating-an-existing-chronicle)
+- If new: assign next ID (`CHR-001`, `CHR-002`, etc.) and state it before proceeding
 
 ---
 
-## Step 2 — Check for Existing Chronicles
+## Step 3 — Link or Note Persona
 
-Before starting, check whether any chronicles exist in `chronicles/`.
+Check `personas/` for existing PERS-###.md files.
 
-- **If none exist:** proceed to Step 5. This is the first one.
-- **If chronicles exist:** say "You already have [N] chronicle(s): [list IDs + titles]. Are you adding a new one, or updating an existing one?"
+If personas exist:
+> "This Chronicle follows a user. Do any of your existing personas fit this journey?
+>
+> [List: PERS-### — Name/Archetype — one-line summary]
+> → New persona — I'll note PERS-TBD and suggest /cv.persona in the handoff
+> → Skip — link a persona later"
 
-If updating, jump to [Updating an Existing Chronicle](#updating-an-existing-chronicle).
-
----
-
-## Step 3 — Check for Existing Personas
-
-Before assigning an ID or asking for the story, check `stakeholders/` for existing persona files.
-
-- **If personas exist:** surface them before proceeding. Use the native UI widget if available:
-
-  > "I found [N] persona(s) in this project. Does this chronicle follow one of them, or is it a new persona?"
-
-  Present each persona as an option (ID + name + one-line description), plus:
-  - `→ New persona — I'll define them during or after this chronicle`
-  - `→ Skip — I'll link a persona later`
-
-  If the user selects an existing persona: pre-fill all persona fields from that document. Skip any clarification questions whose answers are already in the persona file. Note at the top of the generated chronicle: `Persona ref: PERS-###`.
-
-  If the user selects **New persona**: continue normally — the persona Q&A can happen via `/cv.persona` after the chronicle is written, or the chronicle can be written with a `PERS-TBD` reference.
-
-- **If no personas exist:** continue without asking. Do not prompt the user to create one now — surface it in the handoff at Step 8 instead.
+If no personas exist: continue without asking. Surface `/cv.persona` in the handoff.
 
 ---
 
-## Step 4 — Assign Chronicle ID
+## Step 4 — Story State
 
-Determine the next CHR ID from the existing count:
-- No chronicles → this will be `CHR-001`
-- N chronicles exist → this will be `CHR-0NN+1`
+Ask before collecting the journey:
 
-Tell the user the ID before asking for the story:
-> "This will be Chronicle **CHR-001**. Let's write it."
+> "Is this journey describing how users interact with the product **today**, a **proposed** new experience, or an **aspirational** future state?
+>
+> → **CURRENT** — this is how the product works now
+> → **PROPOSED** — this is what we're designing and building
+> → **ASPIRATIONAL** — future vision, not planned for this release"
+
+This sets the `story-state` field and determines which features are marked as `exists: true` vs `exists: false` in the Features Implicated table.
 
 ---
 
-## Step 5 — Story Prompt
+## Step 5 — Collect the Journey
 
-This is the most important step. Do not skip it. Do not add structure. Do not ask for bullet points.
+### If `--from-roleplay`:
 
-Say exactly this (or a close natural paraphrase):
+> "I'll compile the Chronicle from the roleplay session. Here's the arc I observed:
+>
+> [2–3 sentence summary of the simulation — persona, what happened, key emotional moments]
+>
+> I'll use this as the narrative foundation. Tell me anything the simulation didn't capture, or confirm I should proceed."
+
+### If direct input:
+
+Say exactly this:
 
 > "Walk me through the journey as a story — who is the user, what happens step by step, and how do they feel along the way? Don't worry about structure. Just tell me what you see."
 
-Then wait. Give the user space to tell the full story before reacting.
+Wait. Give the user space to tell the full story before reacting.
 
-**If the user gives a very short response** (one or two sentences), gently invite more:
-> "That's a good start. Can you walk me through what actually happens in the product — the specific moments where they interact with it?"
+If the response is very short: "That's a good start. Can you walk me through what actually happens in the product — the specific moments where they interact with it?"
 
-**If the user gives a structured list instead of a story**, accept it but reflect it back as narrative:
-> "Got it. Let me restate that as a story before we dig in — you can tell me if anything's off."
+If the response is a structured list: accept it, reflect it back as narrative, confirm before continuing.
 
 ---
 
-## Step 6 — Run /cv.clarify in Chronicle Mode
+## Step 6 — Clarification Q&A
 
-After the story, invoke `/cv.clarify` in **Mode B**. Follow the Mode B flow exactly:
+Ask clarifying questions one at a time. 6–8 questions, each with 3–4 options + "→ Custom — I'll describe it". Show progress: `**Question N of M** (blocking / advisory)`.
 
-1. Extract signals from the story (persona, trigger, emotional arc, key moments, success signal, open questions)
-2. Ask clarifying questions one at a time, referencing the story at each turn
-3. Typical question set (6–8 questions — classify each as blocking or advisory):
-   - **Trigger** (blocking) — what caused the user to open the product at this specific moment?
-   - **Feature scope** (blocking) — which product features does this journey depend on?
-   - **Persona depth** (advisory) — how familiar is this user with the product? First time or returning?
-   - **Emotional high point** (advisory) — what's the most charged moment emotionally? What does the user feel?
-   - **Success signal** (blocking) — how does the user know it worked? What do they feel or do next?
-   - **Failure path** (advisory) — what happens if the key moment fails? Is there an escalation path?
-   - **Assumptions** (blocking) — scan the story and all answers so far for anything stated as given but not made explicit. Present each candidate assumption and ask whether it should be recorded, revised, or flagged as open. Common categories: device/platform state (notifications enabled, app installed), user knowledge (knows a feature exists, has prior context), environmental conditions (network access, clinical referral pathway), product capabilities (feature is built and working). Always ask this — even clean-seeming stories have hidden assumptions worth surfacing.
-   - **Follow-on journeys** (advisory) — does this naturally lead to another journey?
+Standard question set:
 
-All `/cv.clarify` core rules apply here: one question per turn, multiple choice with reasoning, progress indicator, blocking questions cannot be skipped, pre-draft recap before document generation.
+- **Trigger** (blocking) — what caused the user to open the product at this specific moment?
+- **Emotional arc** (blocking) — what does the user feel at the start, the peak moment, and the end?
+- **Success signal** (blocking) — how does the user know it worked? What do they feel or do next?
+- **Feature scope** (blocking) — which product capabilities does this journey depend on?
+- **Failure path** (advisory) — what happens if the key moment fails?
+- **Assumptions** (blocking) — scan for anything stated as given but not made explicit. Platform state, user knowledge, environmental conditions, product capabilities. Present each and ask: record as stated, revise, or flag as open.
+- **Persona depth** (advisory) — first time using the product or returning?
+- **Follow-on journeys** (advisory) — does this naturally lead to another chronicle?
 
-**Multiple choice formatting rules (required):**
-- **Always use the native UI multiple choice widget** (`ask_user_input_v0`) when available — never present options as plain text if the tool is accessible in the current environment.
-- **If the tool is unavailable** and options must be rendered as plain text in chat, each option must be on its own line with a blank line between the question and the first option. Never run options together. Format exactly as:
-
-  ```
-  **Question N of M** (blocking)
-
-  [Question text]
-
-  A) Option one — reasoning
-  B) Option two — reasoning
-  C) Option three — reasoning
-  → Custom — I'll define it
-  ```
+Blocking questions cannot be skipped. Advisory questions can be waived with a ledger entry.
 
 ---
 
 ## Step 7 — Feature Identification
 
-After clarification, identify the features implicated by this chronicle. These become the Chronicle's `features` list and will generate `FEAT-###` IDs.
+After clarification, identify features implicated by this chronicle:
 
-Ask:
+> "This journey depends on [N] product capabilities:
+>
+> [numbered list: FEAT-### or proposed name + one-sentence role in the journey]
+>
+> Does this match your thinking? Anything to add, split, or remove?"
 
-> "This journey touches on [N] distinct product capabilities. Let me list what I identified — does this match what you're thinking, or are there things to add or split?"
+For each feature, note:
+- **Primary** — the journey is primarily about this
+- **Dependent** — must exist for the journey to work
+- **Implied** — would improve the journey but isn't strictly required
 
-Present the list with brief descriptions. Let the user confirm or adjust.
-
-For each confirmed feature, note whether it is:
-- **Primary** — the journey is primarily about this feature
-- **Dependent** — this feature must exist for the journey to work
-- **Implied** — this feature would make the journey better but isn't strictly required
-
-These will map to PRD priorities later.
+Assign `FEAT-###` IDs for any features that don't have one yet.
 
 ---
 
 ## Step 8 — Pre-Draft Recap
 
-Required before generating any document. Follow the `/cv.clarify` pre-draft recap format:
+Required before generating the document:
 
-> "Here's what I understood from our conversation. Let me know if anything is off before I write the chronicle."
+> "Here's what I understood. Let me know if anything's off before I write the chronicle.
 >
-> [3–5 sentence paragraph: persona, trigger, journey arc, key emotional moment, success signal, features implicated]
+> [3–5 sentences: persona, trigger, journey arc, peak emotional moment, success signal, features implicated]
 >
-> [One sentence listing confirmed assumptions, e.g. "Assumptions: notifications enabled, user is a first-time Aiko user."]
+> Story state: [CURRENT | PROPOSED | ASPIRATIONAL]
+> Assumptions: [list]
 >
-> "Anything to correct?"
+> Anything to correct?"
 
-Do not generate the chronicle until the user confirms.
+Do not generate the Chronicle until confirmed.
 
 ---
 
 ## Step 9 — Generate Chronicle
 
-Output the complete `CHR-###.md` as a code block using this schema:
+Output the complete `CHR-###.md` as a code block:
 
-```markdown
+~~~markdown
 # Chronicle CHR-### — <Title>
-<!-- chronicles/CHR-###.md -->
-<!-- Product: <product name> | product.md ref: [loaded | inline | none] -->
+<!-- cv-artifact: chronicle -->
+<!-- cv-compiled-from: roleplay-debrief | direct-input -->
 
-## Persona
-
-**Name / Archetype:** <name or archetype>
-
-**Age:** <age or range>
-
-**Relationship to product:** <new user / returning user / power user>
-
-**Health context:** <relevant background if applicable>
-
-**Tech comfort:** <low / medium / high>
-
-**Persona ref:** <PERS-### if a persona document exists, otherwise "undefined">
-
-**Product:** <product name — from product.md or inline definition>
-
-## Assumptions
-<!-- Conditions this journey depends on that are stated as given, not validated -->
-- <Assumption 1 — e.g. "Notifications are enabled on the user's device">
-- <Assumption 2 — e.g. "User has completed onboarding">
-<!-- If an assumption is contested or unvalidated, flag it: -->
-- [UNVALIDATED] <Assumption — e.g. "User is willing to share medical history on first session">
-
-## Trigger
-<What caused the user to open the product at this specific moment. One paragraph.>
-
-## Journey
-
-### 1. <Phase name>
-<What the user does and feels. 2–4 sentences.>
-
-### 2. <Phase name>
-<What the user does and feels. 2–4 sentences.>
-
-[Continue for each phase]
-
-## Key Emotional Moment
-<The highest-stakes moment in the journey. What the user feels. What's at risk if it goes wrong.>
-
-## Success Signal
-<How the user knows the journey succeeded. What they feel, say, or do next.>
-
-## Failure Path
-<What happens if the key moment fails. Is there an escalation? Who is responsible?>
-
-## Features Implicated
-| ID | Title | Role |
-|---|---|---|
-| FEAT-001 | <name> | Primary |
-| FEAT-002 | <name> | Dependent |
-
-## User Research Questions
-<!-- Questions to ask real users to validate or challenge this chronicle -->
-<!-- Organised by research method. Remove methods not relevant to this chronicle. -->
-
-**Screener** *(who to recruit)*
-- <Characteristic 1 that makes someone the right participant for this journey>
-- <Characteristic 2>
-
-**Discovery interviews** *(open-ended, validate the problem space)*
-- <Question that probes whether this trigger is real and common>
-- <Question that tests the emotional framing — does the user actually feel this way?>
-- <Question that surfaces alternatives — what do they do instead of using the product?>
-
-**Usability / concept testing** *(validate specific product moments)*
-- <Question or task that tests the key interaction in the journey>
-- <Question that probes the most fragile moment — where trust is won or lost>
-
-**Post-launch validation** *(confirm the success signal is measurable)*
-- <Metric or behaviour that would confirm the success signal in real usage data>
-- <Follow-up question to ask users who completed the journey>
-
-## Open Questions
-<!-- Blocking questions that weren't resolved during clarification -->
-- [ ] [OPEN] <question> — needs resolution before FEAT-### PRD can be approved
+**Status:** draft
+**Persona ref:** PERS-### — <name/archetype> | PERS-TBD
+**Story state:** CURRENT | PROPOSED | ASPIRATIONAL
+**Created:** YYYY-MM-DD
 
 ---
-_Chronicle by: <author> | Created: YYYY-MM-DD | Status: draft_
+
+## Signal Block
+<!-- cv-section: signal -->
+
 ```
+persona-ref:    PERS-### — <name/archetype>
+story-state:    CURRENT | PROPOSED | ASPIRATIONAL
+trigger:        <one sentence — what brought the user to this moment>
+emotional-arc:  <start emotion> → <peak emotion> → <end emotion>
+features:
+  - FEAT-### — <title> — primary | dependent | implied
+  - FEAT-### — <title> — primary | dependent | implied
+blocking-open:  <count>
+linked-prds:    none
+status:         draft
+```
+
+---
+
+## Assumptions
+<!-- cv-section: assumptions -->
+<!-- Conditions this journey depends on that are stated as given, not validated -->
+- <Assumption — e.g. "User has completed onboarding">
+- [UNVALIDATED] <Assumption that hasn't been confirmed with real users>
+
+---
+
+## Trigger
+<!-- cv-section: trigger -->
+<What caused the user to open the product at this specific moment. One paragraph.>
+
+---
+
+## Journey
+<!-- cv-section: journey -->
+
+### Step 1 — <Phase name>
+**Action:** <What the user does>
+**Thought / Feeling:** <What they're thinking or feeling>
+
+### Step 2 — <Phase name>
+**Action:** <What the user does>
+**Thought / Feeling:** <What they're thinking or feeling>
+
+[Continue for each step]
+
+---
+
+## Key Emotional Moments
+<!-- cv-section: emotional-moments -->
+| Moment | Emotion | Risk if handled poorly |
+|--------|---------|----------------------|
+| <moment> | <emotion> | <what breaks if this goes wrong> |
+
+---
+
+## Success Signal
+<!-- cv-section: success-signal -->
+**Functional:** <what the product did that signals success>
+**Emotional:** <how the user feels>
+**Behavioral:** <what the user does next — returns, shares, acts on the information>
+
+---
+
+## Failure Path
+<!-- cv-section: failure-path -->
+<What happens if the key moment fails. Is there a recovery? Who is responsible?>
+
+---
+
+## Features Implicated
+<!-- cv-section: features -->
+| ID | Title | Role | Exists? |
+|----|-------|------|---------|
+| FEAT-### | <title> | primary | yes / no |
+| FEAT-### | <title> | dependent | yes / no |
+
+---
+
+## Open Questions
+<!-- cv-section: open-questions -->
+**Blocking** *(must resolve before related PRD can be compiled)*
+- [ ] <question> — affects FEAT-###
+
+**Advisory**
+- [ ] <question>
+~~~
+
+Instruct the user:
+> "Save this to `chronicles/CHR-###.md`."
 
 ---
 
 ## Step 10 — Handoff
 
-After the chronicle is generated, say:
-
-> "CHR-### is ready. Next steps:"
+> "CHR-### is ready.
 >
-> - `/cv.feature FEAT-###` — define the feature abstraction for each implicated feature
-> - `/cv.prd FEAT-###` — start writing requirements for the primary feature
-> - `/cv.clarify CHR-###` — come back to resolve any open questions
-> - `/cv.persona` — create a persona document for this user if one doesn't exist yet (shown only if persona was `PERS-TBD`)
+> Next steps:
+> - `/cv.discover CHR-###` — map all the features this journey depends on (breadth-first)
+> - `/cv.roleplay PERS-### CHR-###` — run another simulation to pressure-test a specific moment
+> - `/cv.persona` — build a full Persona document for this user (shown only if persona is PERS-TBD)"
 
-Log the chronicle creation:
+Output ledger entries:
+
 ```
-[YYYY-MM-DD] [/cv.chronicle] [CHR-###] DECISION: Chronicle created | FEATURES: FEAT-001, FEAT-002 | OPEN: N blocking questions
+LEDGER ENTRIES — append to ledger.md
+
+[PE-###] Chronicle created: CHR-### — <title>
+  date:   YYYY-MM-DD
+  source: feature-discovery
+  actor:  <config.json → author> | ai
+  status: compiled
+  tags:   [CHR:trigger, CHR:journey, CHR:emotional-moment]
+  note:   Story state: [CURRENT | PROPOSED | ASPIRATIONAL]. Features implicated: [FEAT-### list].
+
+[PE-###] Assumption recorded: <assumption text>
+  date:   YYYY-MM-DD
+  source: feature-discovery
+  actor:  <config.json → author>
+  status: assumed
+  tags:   [CHR:assumptions]
+  note:   <risk if this assumption is wrong>
 ```
+
+Deposit one entry per assumption. Deposit one entry per blocking open question.
 
 ---
 
 ## Updating an Existing Chronicle
 
-If the user wants to update a chronicle:
+1. Read the existing chronicle and summarize it back
+2. Ask: "What's changed — a new journey moment, persona correction, Story State update, or full rewrite?"
+3. Make targeted edits
+4. **If related documents are already approved:** warn before saving:
+   > "CHR-### is linked to approved documents. Updating the journey narrative or features list may invalidate the PRD scope or AC criteria. Do you want to proceed? If yes, I'll flag the affected documents for re-review."
+5. Deposit a ledger entry for the update:
 
-1. Read the existing chronicle aloud (summary, not verbatim)
-2. Ask: "What's changed — is this a new journey moment, a persona correction, or a full rewrite?"
-3. Make targeted edits based on the answer
-4. **If the chronicle has an approved linked PRD:** warn before saving:
-   > "CHR-### is linked to an approved PRD. Updating the chronicle will revert PRD-001 to `review` status and require re-approval before the spec can be generated. Do you want to proceed?"
-5. Log the update to `ledger/decisions.md`
+```
+[PE-###] Chronicle updated: CHR-### — <what changed>
+  date:   YYYY-MM-DD
+  source: feature-discovery
+  actor:  <config.json → author>
+  status: decided
+  tags:   [CHR:trigger | CHR:journey | CHR:features]
+  note:   <reason for update, downstream impact>
+```
 
 ---
 
 ## Standalone Mode Bootstrap
 
-If `_core.md` is not loaded, include this note:
+If `_core.md` is not loaded, include:
 
 ```
 <!-- Running in standalone mode. Gate enforcement and ledger writes require _core.md. -->
 ```
 
 And include inline:
-- Chronicle has no upstream gate (but needs mission.md for quality)
-- Chronicle edits after linked PRD is approved revert PRD to `review` status
-- The clarification sub-routine rules: one question per turn, multiple choice with reasoning, progress indicator (Question N of M), blocking questions cannot be skipped, pre-draft recap required before generation
+- No upstream gate, but mission.md improves quality
+- Signal Block required at top of every Chronicle
+- Story State (CURRENT / PROPOSED / ASPIRATIONAL) must be set before document is generated
+- One clarifying question per turn, blocking questions cannot be skipped
+- Pre-draft recap required before document generation

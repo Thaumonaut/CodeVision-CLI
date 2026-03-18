@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * cv — CodeVision CLI v2.3.0
+ * cv — CodeVision CLI v3.0.0
  *
  * Usage:
  *   cv init [name]              Interactive setup wizard
@@ -8,6 +8,7 @@
  *   cv status [<slug>]          Print current project state
  *   cv lint <slug>              Validate structure and gate conditions
  *   cv stories <slug> <source>  Parse story document into CHR files
+ *   cv ask [--multi] <q> <opts> Present a multiple-choice question in the terminal
  *   cv upgrade                  Upgrade CLI and commands from GitHub
  *   cv migrate                  Run pending project migrations
  */
@@ -19,6 +20,7 @@ import { MIGRATIONS, migrateProject, semverLt } from './cv-migrate.js';
 import { join } from 'path';
 import { homedir } from 'os';
 import { cmdStories } from './cv-stories.js';
+import { cmdAsk } from './cv-prompt.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -33,7 +35,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CV_VERSION_FILE = join(CV_HOME, 'version');
 
-let CV_VERSION = '2.2.0'; // fallback
+let CV_VERSION = '3.0.0'; // fallback
 try {
   // If running from repo, read the package.json file
   const pkgInfo = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf8'));
@@ -48,14 +50,14 @@ const CV_GITHUB_REPO = 'Thaumonaut/CodeVision-CLI';
 const CV_GITHUB_RAW  = `https://raw.githubusercontent.com/${CV_GITHUB_REPO}/refs/heads/main`;
 const CV_GITHUB_API  = `https://api.github.com/repos/${CV_GITHUB_REPO}/contents`;
 const REPO_CLI_DIR   = 'CLI';
-const REPO_CMDS_DIR  = 'Commands';
+const REPO_CMDS_DIR  = 'commands';
 
 // Subfolder name used inside each tool's rules/commands directory
 const CV_SUBFOLDER = 'codevision';
 
 const ARTIFACT_FOLDERS = [
-  'chronicles', 'features', 'specs', 'tasks', 'ledger',
-  'components', 'variables', 'stakeholders', 'contracts',
+  'personas', 'chronicles', 'features', 'adrs',
+  'components', 'contracts', 'ledger',
 ];
 
 // ─── AI Tool targets ─────────────────────────────────────────────────────────
@@ -120,7 +122,7 @@ const WIZARD_TARGETS = [
 // ─── Version tracking ─────────────────────────────────────────────────────────
 
 function getInstalledVersion() {
-  return existsSync(CV_VERSION_FILE) ? readFileSync(CV_VERSION_FILE, 'utf8').trim() : '2.1.1';
+  return existsSync(CV_VERSION_FILE) ? readFileSync(CV_VERSION_FILE, 'utf8').trim() : '2.2.2';
 }
 function setInstalledVersion(v) { writeFileSync(CV_VERSION_FILE, v); }
 
@@ -188,6 +190,23 @@ function readConfigToon(path) {
   try { return parseToon(readFileSync(path, 'utf8')); } catch { return null; }
 }
 
+function readConfigJson(path) {
+  if (!existsSync(path)) return null;
+  try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
+}
+
+function readProjectStatus(root) {
+  const jsonPath = join(root, 'status.json');
+  if (existsSync(jsonPath)) {
+    try { return JSON.parse(readFileSync(jsonPath, 'utf8')); } catch { return null; }
+  }
+  const toonPath = join(root, 'status.toon');
+  if (existsSync(toonPath)) {
+    try { return parseToon(readFileSync(toonPath, 'utf8')); } catch { return null; }
+  }
+  return null;
+}
+
 // ─── Artifact root resolution ─────────────────────────────────────────────────
 
 /**
@@ -200,20 +219,21 @@ function readConfigToon(path) {
  * Returns { root, slug, config } or throws via die().
  */
 function resolveArtifactRoot(slugHint, cwd = process.cwd()) {
-  // 1. Check project-local first
-  const localConfig = join(cwd, '.cv', 'config.toon');
-  if (existsSync(localConfig)) {
-    const cfg = readConfigToon(localConfig);
-    if (cfg && (!slugHint || cfg.project === slugHint)) {
-      return { root: join(cwd, '.cv'), slug: cfg.project, config: cfg };
-    }
+  // 1. Check project-local first (config.json v3, then config.toon v2 fallback)
+  const localConfigJson = join(cwd, '.cv', 'config.json');
+  const localConfigToon = join(cwd, '.cv', 'config.toon');
+  const localCfg = readConfigJson(localConfigJson) || readConfigToon(localConfigToon);
+  if (localCfg && (!slugHint || localCfg.project === slugHint)) {
+    return { root: join(cwd, '.cv'), slug: localCfg.project, config: localCfg };
   }
 
   // 2. System mode — require slug
   if (slugHint) {
     const sysRoot = join(CV_SYSTEM_PROJECTS, slugHint);
     if (existsSync(sysRoot)) {
-      const cfg = readConfigToon(join(sysRoot, 'config.toon')) || { project: slugHint, store_mode: 'system' };
+      const cfg = readConfigJson(join(sysRoot, 'config.json')) ||
+                  readConfigToon(join(sysRoot, 'config.toon')) ||
+                  { project: slugHint, store_mode: 'system' };
       return { root: sysRoot, slug: slugHint, config: cfg };
     }
   }
@@ -224,7 +244,9 @@ function resolveArtifactRoot(slugHint, cwd = process.cwd()) {
       .filter(d => d.isDirectory()).map(d => d.name);
     if (dirs.length === 1) {
       const slug = dirs[0];
-      const cfg  = readConfigToon(join(CV_SYSTEM_PROJECTS, slug, 'config.toon')) || { project: slug, store_mode: 'system' };
+      const cfg  = readConfigJson(join(CV_SYSTEM_PROJECTS, slug, 'config.json')) ||
+                   readConfigToon(join(CV_SYSTEM_PROJECTS, slug, 'config.toon')) ||
+                   { project: slug, store_mode: 'system' };
       return { root: join(CV_SYSTEM_PROJECTS, slug), slug, config: cfg };
     }
   }
@@ -261,7 +283,7 @@ function buildCvBlock(slug) {
     `This project uses CodeVision for spec-driven development. Project slug: \`${slug}\``,
     '',
     '### Command sequence',
-    '`/cv.product` → `/cv.persona` → `/cv.chronicle` → `/cv.scaffold` → `/cv.feature` → `/cv.tasks` → `/cv.implement`',
+    '`/cv.init` → `/cv.persona` → `/cv.chronicle` → `/cv.define` → `/cv.spec` → `/cv.tasks` → `/cv.build`',
     '',
     '<!-- CodeVision: END -->',
     '',
@@ -291,7 +313,7 @@ async function cmdInit(args) {
 
   // ── Step 1: Project name ──────────────────────────────────────────────────
 
-  section('Step 1 of 4 — Project name');
+  section('Step 1 of 5 — Project name');
   console.log('');
 
   let slug = nonFlag[0] && slugValid(nonFlag[0]) ? nonFlag[0] : null;
@@ -316,9 +338,24 @@ async function cmdInit(args) {
   console.log('');
   console.log('  ' + green('✓') + ' Project: ' + bold(projectName) + ' ' + dim('(' + slug + ')'));
 
-  // ── Step 2: Artifact store location ──────────────────────────────────────
+  // ── Step 2: Author name ───────────────────────────────────────────────────
 
-  section('Step 2 of 4 — Artifact storage');
+  section('Step 2 of 5 — Your name');
+  console.log('');
+  console.log(dim('  Used as the author in ledger entries and approvals.'));
+  console.log('');
+
+  const authorName = await input({
+    message: 'Your name or display name:',
+    validate: v => v.trim().length > 0 || 'Please enter a name',
+  });
+
+  console.log('');
+  console.log('  ' + green('✓') + ' Author: ' + bold(authorName.trim()));
+
+  // ── Step 3: Artifact store location ──────────────────────────────────────
+
+  section('Step 3 of 5 — Artifact storage');
   console.log('');
   console.log(dim('  Where should CodeVision store your project artifacts?'));
   console.log('');
@@ -353,7 +390,7 @@ async function cmdInit(args) {
 
   // ── Step 3: AI tool selection ─────────────────────────────────────────────
 
-  section('Step 3 of 4 — AI tool(s)');
+  section('Step 4 of 5 — AI tool(s)');
   console.log('');
   console.log(dim('  Select which AI tool(s) you use. Commands will be installed into'));
   console.log(dim('  the correct folder for each tool (inside your current project directory).'));
@@ -374,7 +411,7 @@ async function cmdInit(args) {
 
   // ── Step 4a: Create artifact folder structure ─────────────────────────────
 
-  section('Step 4 of 4 — Creating project structure');
+  section('Step 5 of 5 — Creating project structure');
   console.log('');
 
   if (existsSync(artifactRoot)) {
@@ -396,37 +433,18 @@ async function cmdInit(args) {
   const now = isoNow();
   const seeds = [
     {
-      p: 'product.md',
-      c: `# Product — ${projectName}\n<!-- Run /cv.product to define this. -->\n\n## Elevator Pitch\n[TBD]\n`,
-    },
-    {
-      p: 'status.toon',
-      c: toToon({
-        spec_version: '2.0',
-        project: slug,
-        name: projectName,
-        current_phase: 'initialization',
-        active_lead: 'project_lead',
-        active_feature_id: '',
-        active_checkpoint_id: '',
-        paused: 'false',
-        last_command: 'cv init',
-        cv_version: CV_VERSION,
-        created_at: now,
-      }),
-    },
-    {
       p: 'mission.md',
-      c: `# Mission — ${projectName}\n<!-- Populated by /cv.init (AI command). -->\n\n## North Star\n[TBD]\n\n## Problem Statement\n[TBD]\n\n## Target Users\n[TBD]\n\n## Success Definition\n[TBD]\n\n## Non-Goals\n[TBD]\n`,
+      c: `# Mission — ${projectName}\n<!-- Populated by /cv.init (AI command). -->\n\n## North Star\n[TBD]\n\n## Problem Statement\n[TBD]\n\n## Target Users\n[TBD]\n\n## Success Signal\n[TBD]\n\n## Non-Goals\n[TBD]\n`,
     },
     {
-      p: 'ledger/decisions.md',
-      c: `# Decision Ledger\n\n[${now}] [cv init] Project initialized | SLUG: ${slug} | STORE: ${storeMode}\n`,
+      p: 'constitution.md',
+      c: `# Constitution — ${projectName}\n<!-- Populated by /cv.init (AI command). -->\n<!-- Read by: Validation Agent (build/run commands), all AI commands (stack + non-negotiables) -->\n\n## Project Type\n[TBD]\n\n## Tech Stack\n[TBD]\n\n## Build & Run\n[TBD]\n\n## Design System\n[TBD]\n\n## Non-Negotiables\n[TBD]\n`,
     },
-    { p: 'ledger/changes.md',       c: '# Change Log\n' },
-    { p: 'components/registry.md',  c: '# Component Registry\n' },
-    { p: 'variables/tokens.md',     c: '# Design Tokens\n' },
-    { p: 'variables/naming.md',     c: '# Naming Conventions\n' },
+    {
+      p: 'ledger/ledger.md',
+      c: `# Decision Ledger\n\n[PE-001] Project initialized: ${slug}\n  date:   ${now.slice(0, 10)}\n  source: cli\n  actor:  ${authorName.trim()}\n  status: decided\n  tags:   []\n  note:   Mode: ${storeMode}.\n`,
+    },
+    { p: 'components/registry.md', c: '# Component Registry\n' },
   ];
 
   for (const { p, c } of seeds) {
@@ -435,19 +453,34 @@ async function cmdInit(args) {
     else { info(rootLabel + '/' + p + '  (exists)'); }
   }
 
-  // Write config.toon — always overwrite so it reflects current choices
-  // tools: stored as comma-separated values so cv upgrade knows where to reinstall
-  const configToon = toToon({
+  // Write status.json
+  const statusJson = {
+    state: 'active',
+    phase: 'explore',
+    active_feature: null,
+    validation_blocked: false,
+    last_command: 'cv init',
+    last_updated: now,
+  };
+  const statusJsonPath = join(artifactRoot, 'status.json');
+  if (!existsSync(statusJsonPath)) {
+    writeFileSync(statusJsonPath, JSON.stringify(statusJson, null, 2) + '\n');
+    ok(rootLabel + '/status.json');
+  } else { info(rootLabel + '/status.json  (exists)'); }
+
+  // Write config.json — always overwrite so it reflects current choices
+  const configJson = {
     project: slug,
     name: projectName,
+    author: authorName.trim(),
     store_mode: storeMode,
-    tools: targets.map(t => t.value).join(','),
+    tools: targets.map(t => t.value),
     cwd,
     codevision_version: CV_VERSION,
     created_at: now,
-  });
-  writeFileSync(join(artifactRoot, 'config.toon'), configToon);
-  ok(rootLabel + '/config.toon');
+  };
+  writeFileSync(join(artifactRoot, 'config.json'), JSON.stringify(configJson, null, 2) + '\n');
+  ok(rootLabel + '/config.json');
 
   // Register in global index (always, regardless of store mode, so cv status works)
   mkdirSync(CV_HOME, { recursive: true });
@@ -456,7 +489,7 @@ async function cmdInit(args) {
   if (existsSync(registryPath)) {
     try { registry = parseToon(readFileSync(registryPath, 'utf8')); } catch { /* ignore */ }
   }
-  registry[slug] = JSON.stringify({ cwd, store_mode: storeMode, artifact_root: artifactRoot });
+  registry[slug] = JSON.stringify({ cwd, store_mode: storeMode, artifact_root: artifactRoot, version: CV_VERSION });
   writeFileSync(registryPath, Object.entries(registry).map(([k, v]) => `${k}: ${v}`).join('\n') + '\n');
 
   console.log('');
@@ -516,6 +549,7 @@ async function cmdInit(args) {
   console.log(bold(green('✓ CodeVision is ready.')));
   console.log('');
   console.log('  Project  : ' + bold(projectName) + ' ' + dim('(' + slug + ')'));
+  console.log('  Author   : ' + bold(authorName.trim()));
   console.log('  Artifacts: ' + cyan(artifactRoot + '/'));
   console.log('  Mode     : ' + (storeMode === 'project'
     ? green('project') + dim(' (.cv/ in repo)')
@@ -523,9 +557,9 @@ async function cmdInit(args) {
   console.log('');
   console.log(bold('Next steps:'));
   console.log('');
-  console.log('  1. ' + cyan('/cv.init') + '        ' + dim('Define your mission (run inside your AI tool)'));
-  console.log('  2. ' + cyan('/cv.chronicle') + '   ' + dim('Write the first user journey'));
-  console.log('  3. ' + cyan('/cv.prd') + '         ' + dim('Author the product requirements document'));
+  console.log('  1. ' + cyan('/cv.init') + '        ' + dim('Define mission + tech constitution (run inside your AI tool)'));
+  console.log('  2. ' + cyan('/cv.persona') + '     ' + dim('Build your first user persona'));
+  console.log('  3. ' + cyan('/cv.chronicle') + '   ' + dim('Write the first user journey'));
   console.log('');
   console.log(dim('  Tip: run ') + bold('cv fetch ' + slug) + dim(' to load artifacts into AI context'));
   console.log('');
@@ -538,7 +572,9 @@ async function cmdInit(args) {
 // ~/.codevision/commands/ into each tool's destination folder.
 
 function reinstallCommandsForProject(config, projectCwd, { force = true } = {}) {
-  const toolValues = (config.tools || '').split(',').map(s => s.trim()).filter(Boolean);
+  const toolValues = Array.isArray(config.tools)
+    ? config.tools
+    : (config.tools || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!toolValues.length) return;
 
   const targets = WIZARD_TARGETS.filter(t => toolValues.includes(t.value));
@@ -567,26 +603,22 @@ function cmdFetch(args) {
 
   const { root, slug, config } = resolveArtifactRoot(slugHint);
 
-  let phase = 'initialization';
-  const sp = join(root, 'status.toon');
-  if (existsSync(sp)) {
-    try { phase = parseToon(readFileSync(sp, 'utf8')).current_phase || phase; } catch { /* ignore */ }
-  }
+  let phase = 'explore';
+  const s = readProjectStatus(root);
+  if (s) phase = s.phase || s.current_phase || phase;
 
   const PHASE_ARTIFACTS = {
-    initialization: ['mission.md', 'status.toon'],
-    discovery:      ['mission.md', 'status.toon', 'chronicles/', 'stakeholders/'],
-    planning:       ['mission.md', 'status.toon', 'chronicles/', 'features/'],
-    engineering:    ['mission.md', 'status.toon', 'features/', 'specs/'],
-    specification:  ['mission.md', 'status.toon', 'features/', 'specs/'],
-    tasks:          ['mission.md', 'status.toon', 'specs/', 'tasks/'],
-    implementation: ['mission.md', 'status.toon', 'specs/', 'tasks/', 'contracts/'],
-    review:         ['mission.md', 'status.toon', 'specs/', 'tasks/', 'ledger/'],
-    validation:     ['mission.md', 'status.toon', 'tasks/', 'ledger/'],
+    explore:  ['mission.md', 'constitution.md', 'status.json', 'personas/', 'chronicles/'],
+    define:   ['mission.md', 'constitution.md', 'status.json', 'chronicles/', 'features/'],
+    specify:  ['mission.md', 'status.json', 'features/'],
+    task:     ['mission.md', 'status.json', 'features/'],
+    build:    ['mission.md', 'constitution.md', 'status.json', 'features/', 'contracts/'],
+    triage:   ['mission.md', 'status.json', 'features/'],
+    prove:    ['mission.md', 'status.json', 'features/', 'ledger/'],
   };
   const ALL = [
-    'mission.md', 'product.md', 'status.toon', 'chronicles/', 'stakeholders/',
-    'features/', 'specs/', 'tasks/', 'ledger/', 'components/', 'variables/', 'contracts/',
+    'mission.md', 'constitution.md', 'status.json',
+    'personas/', 'chronicles/', 'features/', 'adrs/', 'ledger/', 'components/', 'contracts/',
   ];
   const arts = full ? ALL : (PHASE_ARTIFACTS[phase] || ALL);
 
@@ -642,13 +674,26 @@ function cmdStatus(args) {
 }
 
 function _printProjectStatus(root, slug, config) {
-  const sp = join(root, 'status.toon');
-  if (!existsSync(sp)) die('status.toon not found in ' + root);
-  const s = parseToon(readFileSync(sp, 'utf8'));
+  const s = readProjectStatus(root);
+  if (!s) die('No status.json found in ' + root + '\nRun /cv.init inside your AI tool to initialize the project state.');
+
   console.log('\n' + bold('Status') + ' — ' + cyan(slug) + '\n');
-  for (const [k, v] of Object.entries(s)) {
-    if (v !== null && v !== undefined && v !== '')
-      console.log('  ' + bold(String(k).padEnd(24)) + ' ' + String(v));
+
+  if (s.validation_blocked) {
+    console.log('  ' + red('⛔ VALIDATION BLOCKED') + ' — ' + (s.active_feature || 'unknown feature'));
+    console.log('  ' + dim('No build work can proceed. Run /cv.debug to resolve.'));
+    console.log('');
+  }
+
+  const display = {
+    phase:              s.phase || s.current_phase,
+    active_feature:     s.active_feature || s.active_feature_id || '—',
+    validation_blocked: s.validation_blocked ?? false,
+    last_command:       s.last_command || '—',
+    last_updated:       s.last_updated || '—',
+  };
+  for (const [k, v] of Object.entries(display)) {
+    console.log('  ' + bold(String(k).padEnd(24)) + ' ' + String(v));
   }
   if (config?.store_mode) {
     console.log('  ' + bold('store_mode'.padEnd(24)) + ' ' + config.store_mode);
@@ -659,17 +704,18 @@ function _printProjectStatus(root, slug, config) {
 
 function _listAllProjects() {
   const projects = [];
-  // 1. Local project in cwd
-  const local = join(process.cwd(), '.cv', 'config.toon');
-  if (existsSync(local)) {
-    const cfg = readConfigToon(local);
-    if (cfg) projects.push({ slug: cfg.project, root: join(process.cwd(), '.cv'), config: cfg });
-  }
+  // 1. Local project in cwd (config.json v3, config.toon v2 fallback)
+  const cwd = process.cwd();
+  const localCfg = readConfigJson(join(cwd, '.cv', 'config.json')) ||
+                   readConfigToon(join(cwd, '.cv', 'config.toon'));
+  if (localCfg) projects.push({ slug: localCfg.project, root: join(cwd, '.cv'), config: localCfg });
+
   // 2. System projects
   if (existsSync(CV_SYSTEM_PROJECTS)) {
     for (const d of readdirSync(CV_SYSTEM_PROJECTS, { withFileTypes: true }).filter(d => d.isDirectory())) {
       const root = join(CV_SYSTEM_PROJECTS, d.name);
-      const cfg  = readConfigToon(join(root, 'config.toon'));
+      const cfg  = readConfigJson(join(root, 'config.json')) ||
+                   readConfigToon(join(root, 'config.toon'));
       if (!projects.find(p => p.slug === d.name)) {
         projects.push({ slug: d.name, root, config: cfg });
       }
@@ -688,39 +734,34 @@ function cmdLint(args) {
   let errors = 0, warnings = 0;
 
   // Core file checks
-  for (const f of ['mission.md', 'status.toon', 'product.md']) {
+  for (const f of ['mission.md', 'status.json', 'constitution.md', 'config.json']) {
     if (existsSync(join(root, f))) ok(f);
     else { fail(f + '  ' + red('MISSING')); errors++; }
+  }
+
+  // Check for validation block
+  const s = readProjectStatus(root);
+  if (s?.validation_blocked) {
+    fail('validation_blocked: true — ' + red('BLOCKED'));
+    errors++;
   }
   // Folder checks
   for (const f of ARTIFACT_FOLDERS) {
     if (!existsSync(join(root, f))) { warn(f + '/  ' + yellow('missing')); warnings++; }
   }
 
-  // Feature gate checks
+  // Feature directory check
   const featDir = join(root, 'features');
   if (existsSync(featDir)) {
     const feats = readdirSync(featDir, { withFileTypes: true })
       .filter(d => d.isDirectory()).map(d => d.name);
     if (feats.length) {
-      console.log('\n' + bold('Feature Gates') + '\n');
+      console.log('\n' + bold('Features') + '\n');
       for (const feat of feats) {
-        const ap = join(featDir, feat, 'approvals.toon');
-        let approvals = {};
-        if (existsSync(ap)) {
-          try { approvals = parseToon(readFileSync(ap, 'utf8')); } catch { /* ignore */ }
-        }
-        const gs = k => approvals[k]?.status ?? (approvals[k] ?? 'missing');
-        const ic = s => s === 'approved' ? green('approved') : s === 'pending' ? yellow('pending') : dim('—');
-        const prd = gs('prd'), erd = gs('erd'), spec = gs('spec');
-        console.log('  ' + bold(feat));
-        console.log('    prd    ' + ic(prd));
-        console.log('    erd    ' + ic(erd) + (prd !== 'approved' ? dim('  (blocked: prd not approved)') : ''));
-        console.log('    spec   ' + ic(spec) + ((prd !== 'approved' || erd !== 'approved') ? dim('  (blocked)') : ''));
-        if (prd !== 'approved' && existsSync(join(featDir, feat, 'prd.md'))) {
-          warn(feat + ': prd.md exists but not approved');
-          warnings++;
-        }
+        const briefPath = join(featDir, feat, '.brief');
+        const hasBrief  = existsSync(briefPath);
+        console.log('  ' + bold(feat) + (hasBrief ? '' : dim('  (no .brief)')));
+        if (!hasBrief) { warn(feat + ': .brief missing — run /cv.define'); warnings++; }
       }
     }
   }
@@ -814,12 +855,13 @@ async function cmdUpgrade(args) {
   } catch (err) {
     console.log(red('  Could not enumerate command files: ' + err.message));
     console.log(yellow('  Falling back to static list...'));
-    // Fallback: hardcoded list of known command files
+    // Fallback: hardcoded list of known v3 command files
     commandFiles = [
-      '_STYLE', '_core', 'cv-bug', 'cv-change', 'cv-component', 'cv-contract',
-      'cv-feature', 'cv-help', 'cv-implement', 'cv-init', 'cv-review', 'cv-scaffold',
-      'cv-status', 'cv-tasks', 'cv-vars', 'cv.chronicle', 'cv.clarify', 'cv.init',
-      'cv.organize', 'cv.persona', 'cv.product',
+      '_STYLE', '_core',
+      'cv.approve', 'cv.build', 'cv.chronicle', 'cv.clarify', 'cv.continue',
+      'cv.debug', 'cv.define', 'cv.discover', 'cv.help', 'cv.init',
+      'cv.persona', 'cv.reconcile', 'cv.roleplay', 'cv.spec', 'cv.status',
+      'cv.tasks', 'cv.triage', 'cv.validate', 'cv.write',
     ].map(n => ({ name: n + '.md', download_url: `${CV_GITHUB_RAW}/${REPO_CMDS_DIR}/${n}.md` }));
   }
 
@@ -936,6 +978,7 @@ const COMMANDS = {
   status:  cmdStatus,
   lint:    cmdLint,
   stories: cmdStories,
+  ask:     args => cmdAsk(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
   upgrade: args => cmdUpgrade(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
   migrate: args => cmdMigrate(args).catch(e => { console.error(red('\n' + e.message)); process.exit(1); }),
 };
@@ -945,11 +988,12 @@ if (!command || command === '--help' || command === '-h') {
 ${bold('cv')} — CodeVision CLI v${CV_VERSION}
 
 ${bold('Usage:')}
-  cv init [name]              Interactive setup wizard
+  cv init [name]              Interactive setup wizard (creates folder structure)
   cv fetch [slug] [--full]    Show artifacts to load into AI context
-  cv status [slug]            Print project state
-  cv lint [slug]              Validate structure and gate conditions
+  cv status [slug]            Print project state (phase, active feature, validation block)
+  cv lint [slug]              Validate structure and check for validation blocks
   cv stories <slug> <source>  Parse a story document into CHR files
+  cv ask [--multi] <q> <opts> Present a multiple-choice question in the terminal
   cv upgrade                  Upgrade CLI and commands from GitHub
   cv upgrade --check          Check if an update is available
   cv upgrade --migrate        Run migrations only (no file downloads)
@@ -961,6 +1005,9 @@ ${bold('Flags:')}
 ${bold('Artifact storage:')}
   Project mode  .cv/ inside your project directory (committed to git)
   System mode   ~/.codevision/projects/<slug>/
+
+${bold('Phase lifecycle:')}
+  explore → define → specify → task → build → triage → prove
 
 ${bold('Supported AI tools:')}
 ${WIZARD_TARGETS.map(t => '  ' + t.name.padEnd(20) + dim(t.destDir || t.destFile || '')).join('\n')}

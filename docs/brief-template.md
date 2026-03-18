@@ -1,0 +1,183 @@
+# .brief — [FEAT-###/MB-##]: [Feature Title]
+<!-- cv-artifact: brief -->
+<!-- cv-auto-generated: true — do not edit manually -->
+<!-- cv-generator: cv CLI — regenerated on every document save -->
+<!-- To update: save any source document, or run: cv lint -->
+
+**Generated:** YYYY-MM-DDTHH:MM:SSZ
+**Phase:** explore | define | specify | task | build | surface | prove
+**Chronicle ref:** CHR-### — [title]
+**Persona ref:** PERS-### — [name/archetype]
+
+---
+<!--
+  This file is the default context load for all AI commands.
+  cv fetch [FEAT-###/MB-##] loads this file only (one call).
+  All AI commands read this first before requesting deeper context.
+  Keep total file size under 800 tokens.
+-->
+
+## Document Status
+<!-- Shows what's locked, what's draft, what's missing -->
+
+| Document | Status | Blocking Questions |
+|----------|--------|--------------------|
+| Persona (PERS-###) | locked ✓ / draft ⚠ / missing ✗ | [count] |
+| Chronicle (CHR-###) | locked ✓ / draft ⚠ / missing ✗ | [count] |
+| PRD | locked ✓ / draft ⚠ / missing ✗ | [count] |
+| UIRD | locked ✓ / draft ⚠ / missing ✗ | [count] |
+| ERD | locked ✓ / draft ⚠ / missing ✗ | [count] |
+| Acceptance Criteria | locked ✓ / draft ⚠ / missing ✗ | [count] |
+| Spec | generated ✓ / pending ○ / not ready ✗ | — |
+| Tasks | generated ✓ / pending ○ / not ready ✗ | — |
+
+**Next gate:** [what must happen before the next phase can begin]
+
+---
+
+## Persona Signal
+<!-- From PERS-###.md §signal -->
+
+```
+archetype:    [archetype label]
+primary-pain: [one sentence]
+primary-goal: [one sentence]
+behavioral-summary: [one sentence]
+```
+
+---
+
+## Chronicle Signal
+<!-- From CHR-###.md §signal -->
+
+```
+story-state:  PROPOSED | CURRENT | CURRENT+GAP | ASPIRATIONAL
+trigger:      [one sentence — what brought the user here]
+emotional-arc:[e.g. anxiety → clarity → confidence]
+blocking-q:   [count — number of blocking open questions]
+```
+
+---
+
+## PRD Signal
+<!-- From prd.md §signal -->
+<!-- Status: locked ✓ / draft ⚠ / missing ✗ -->
+
+```
+goal:         [one sentence]
+scope:
+  - [item]
+  - [item]
+out-of-scope:
+  - [item]
+constraints:
+  - [item]
+success-metric: [metric]
+components-implicated:
+  reuse: [[Component@version], ...]
+  new:   [[Component], ...]
+entities-implicated:
+  - [Entity — role]
+open: [blocking: N, advisory: N]
+```
+
+---
+
+## UIRD Signal
+<!-- From uird.md §signal -->
+<!-- Status: locked ✓ / draft ⚠ / missing ✗ -->
+
+```
+screens:      [[ScreenName], ...]
+component-manifest:
+  reuse: [[Component@version], ...]
+  new:   [[Component], ...]
+states:       [idle, loading, empty, error, success, offline]
+key-flows:    [[FlowName], ...]
+open:         [blocking: N, advisory: N]
+```
+
+---
+
+## ERD Signal
+<!-- From erd.md §signal -->
+<!-- Status: locked ✓ / draft ⚠ / missing ✗ -->
+
+```
+entities:
+  - [EntityName]: [key attributes summary]
+relations:
+  - [A] →[type]→ [B]
+constraints:
+  - [constraint]
+migration-impact: additive | modifying | destructive
+open:         [blocking: N, advisory: N]
+```
+
+---
+
+## Conflicts Detected
+<!-- Populated by CLI cross-reference check — UIRD vs ERD -->
+
+[none detected]
+
+OR
+
+```
+⚠ CONFLICT C-001
+  UIRD: [what UIRD says about this]
+  ERD:  [what ERD says about this — the conflicting claim]
+  → Resolution needed before spec generation (/cv.reconcile)
+```
+
+---
+
+## Blocking Open Questions
+<!-- Aggregated from all documents — blocking only -->
+<!-- Advisory questions not shown here — see individual documents -->
+
+[none — all blocking questions resolved]
+
+OR
+
+| ID | Document | Question | Owner |
+|----|----------|----------|-------|
+| Q-### | PRD | [question] | [PM/Eng] |
+| Q-### | UIRD | [question] | [PM/Eng] |
+
+---
+
+## Deferred Items
+<!-- Things explicitly out of scope for this version -->
+
+| Item | Deferred From | Reason | Target Version |
+|------|---------------|--------|----------------|
+| [item] | PRD:out-of-scope | [reason] | v1.1 |
+| [item] | CHR:future-versions | [reason] | v2 |
+
+---
+
+## Deeper Context Available
+<!-- Named sections available via cv fetch for this feature -->
+<!-- The AI requests these when it has a specific reason to go deeper -->
+
+```bash
+cv fetch [FEAT-###/MB-##] prd:full           # full PRD prose
+cv fetch [FEAT-###/MB-##] prd:scenarios      # user scenarios only
+cv fetch [FEAT-###/MB-##] prd:edge-cases     # edge cases only
+cv fetch [FEAT-###/MB-##] uird:flows         # user flow details
+cv fetch [FEAT-###/MB-##] uird:states        # state machine
+cv fetch [FEAT-###/MB-##] erd:full           # full ERD
+cv fetch [FEAT-###/MB-##] ac                 # acceptance criteria
+cv fetch [FEAT-###/MB-##] spec:capabilities  # spec capabilities
+cv fetch [FEAT-###/MB-##] tasks:checkpoint-1 # specific checkpoint
+cv fetch [FEAT-###/MB-##] ledger             # exploration ledger
+cv fetch personas/PERS-### voice             # persona voice profile
+cv fetch chronicles/CHR-### journey          # chronicle journey steps
+```
+
+---
+
+*Auto-generated by CodeVision CLI — do not edit*
+*Source: [FEAT-###/MB-##] document set*
+*Regenerate: cv lint | cv fetch | any document save*

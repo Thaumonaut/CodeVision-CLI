@@ -1,26 +1,26 @@
 # /cv.persona
-<!-- cv.persona.md | Create and edit user persona documents. -->
-<!-- Personas are reusable across chronicles, PRDs, and user research. -->
+<!-- cv.persona.md | Build a Persona document through guided Q&A. -->
+<!-- Personas are the behavioral model used during /cv.story simulations and for consistency checks across all downstream documents. -->
 <!-- Standalone: includes minimum context inline if _core.md is not loaded. -->
 
 ---
 
 ## What This Command Does
 
-`/cv.persona` defines a user persona as a structured document that can be referenced by any chronicle, PRD, or research plan. Personas are not user stories — they are reusable character definitions that give the team a shared understanding of who they are building for.
+`/cv.persona` builds a Persona document through guided Q&A and deposits every answer to the Exploration Ledger with `PERS:*` tags. The compiled document is not just a profile — it is a **behavioral model**. The Voice & Behaviour Profile section is what the AI loads when entering persona mode in `/cv.story`.
 
 Every chronicle should reference a persona. Every persona should be grounded in real research signals or explicitly flagged as assumed.
 
 Invocation:
 ```
 /cv.persona                   ← create a new persona
-/cv.persona PERS-###          ← review or edit an existing persona
+/cv.persona PERS-###          ← review or update an existing persona
 /cv.persona list              ← list all personas in the project
 ```
 
 Personas live at:
 ```
-~/.codevision/projects/<slug>/stakeholders/PERS-###.md
+~/.codevision/projects/<slug>/personas/PERS-###.md
 ```
 
 ---
@@ -101,20 +101,13 @@ Accept free-form input. Extract: age, gender, location, family situation, employ
 
 ---
 
-### Q3 — Health or Domain Context *(blocking)*
+### Q3 — Domain Context *(blocking)*
 
-**Question:** "What's their health situation or relevant domain context?"
+**Question:** "What's their relevant context for this product — what's going on in their life or work that makes this product matter to them?"
 
-Options frame the depth of health involvement:
-```
-A) Active condition manager — living with one or more diagnosed conditions daily
-B) Newly diagnosed — recent diagnosis, still building understanding and routines
-C) Prevention-focused — no active condition, motivated by family history or lifestyle goals
-D) Caregiver — managing someone else's health, not primarily their own
-→ Custom — I'll define it
-```
+Generate 4 options grounded in the product context (read from `mission.md` or `product.md` if available). Options should reflect plausible relationships a user could have to this product domain. Do not make them health-specific unless the product is health-related.
 
-After the choice, ask for specifics: "What conditions, medications, or health history should we capture?"
+After the choice, ask for specifics: "What additional context — history, situation, or background — should we capture about this person in relation to the product?"
 
 ---
 
@@ -199,17 +192,35 @@ Do not generate the document until confirmed.
 Output the complete `PERS-###.md` as a code block using this schema:
 
 ```markdown
-# Persona PERS-### — <Name>
-<!-- stakeholders/PERS-###.md -->
+# Persona PERS-### — <Name> — <Archetype>
+<!-- cv-artifact: persona -->
+<!-- cv-compiled-from: ledger tags PERS:* -->
+<!-- cv-persona: enforce -->
+<!-- personas/PERS-###.md -->
 <!-- Research basis: validated | assumed | partially validated -->
 
+## Signal Block
+<!-- cv-section: signal -->
+
+```
+archetype:      <one-word or short label — e.g. "Chronic-Cami", "Anxious-Marcus">
+age:            <number>
+location:       <city, country>
+primary-pain:   <one sentence — the single most important pain point>
+primary-goal:   <one sentence — what success looks like for them>
+behavioral-summary: <one sentence — how they make decisions and respond to stress>
+chronicles:     <CHR-### — Title, or "none yet">
+research-basis: <unvalidated | partially-validated | validated>
+```
+
+---
+
 ## Identity
+<!-- cv-slot: identity -->
 
 **Name / Archetype:** <name — archetype label>
 
 **Age:** <age or range>
-
-**Gender:** <if relevant to product context>
 
 **Location:** <city, country, or region>
 
@@ -217,41 +228,37 @@ Output the complete `PERS-###.md` as a code block using this schema:
 
 ---
 
-## Health & Domain Context
+## Domain Context
+<!-- cv-slot: domain-context -->
 
-**Primary context:** <active condition manager / newly diagnosed / prevention-focused / caregiver>
-
-**Conditions:** <diagnosed conditions, if any>
-
-**Medications:** <current medications, if known>
-
-**Medical history:** <relevant history>
-
-**Family history:** <relevant family health background>
+<Relevant context for how this persona relates to the product — what's going on in their life or work that makes this product matter. 2–3 sentences.>
 
 ---
 
 ## Behaviours & Tech Profile
+<!-- cv-slot: tech-profile -->
 
 **Tech comfort:** <low / medium / high> — <one sentence explaining what that means for this person>
 
 **Primary apps/tools:** <what they use daily>
 
-**Health information sources:** <where they turn for health advice today>
+**Information sources:** <where they turn for advice or information today>
 
 **Workarounds:** <what they do now instead of using a product like yours>
 
 ---
 
 ## Pain Points
+<!-- cv-slot: pain-points -->
 
-1. <Most defining pain point — the one they'd name first>
+1. <Most defining pain point — specific enough that a product feature could directly address it>
 2. <Second pain point>
 3. <Third pain point, if applicable>
 
 ---
 
 ## Motivations & Goals
+<!-- cv-slot: motivations -->
 
 **What they want:** <the real underlying goal, not the surface request>
 
@@ -266,22 +273,81 @@ Output the complete `PERS-###.md` as a code block using this schema:
 
 ---
 
-## Chronicles Featuring This Persona
+## Voice & Behaviour Profile
+<!-- cv-section: voice -->
+<!-- This section is loaded by /cv.story when entering persona mode. -->
+<!-- Specific enough to constrain behavior, not just descriptive. -->
 
-| ID | Title |
-|---|---|
-| CHR-### | <Chronicle title> |
+### How They Speak
+<!-- cv-slot: voice-speech -->
+
+- <Tone and register — formal / casual / hesitant / direct>
+- <Vocabulary — clinical vs informal, technical vs lay terms>
+- <Sentence structure — long/short, trailing off, assertive>
+- <Characteristic phrases or patterns>
+
+### Emotional Defaults
+<!-- cv-slot: emotional-defaults -->
+
+| State | Behavior |
+|-------|----------|
+| Base state | <How they present when things are normal> |
+| Under stress | <First response to stress — avoidance, practicality, panic?> |
+| When scared | <How fear manifests — quiet, chatty, dismissive?> |
+| When reassured | <How they respond to good news or calming information> |
+| When overwhelmed | <What they do when there's too much information> |
+| When resistant | <How they push back without being confrontational> |
+
+### Decision-Making Patterns
+<!-- cv-slot: decision-patterns -->
+
+- <Who/what they trust — people over information? Experience over data?>
+- <What factors matter — cost, convenience, social proof, authority?>
+- <What makes them procrastinate vs act immediately>
+- <Who they consult before making a key decision>
+
+### Situation-Specific Responses
+<!-- cv-slot: situation-responses -->
+
+**When the product suggests something they didn't expect:**
+<Specific behavioral description — what they say, what they do, what they do next.>
+
+**When the conversation gets too complex or technical:**
+<Specific behavioral description>
+
+**When the product asks them to do something that feels like effort:**
+<Specific behavioral description>
+
+### What <Name> Would Never Do
+<!-- cv-slot: never-do -->
+
+- <Thing they would never say or do — with brief reason why>
+- <Thing they would never say or do>
+- <Thing they would never say or do>
+
+---
+
+## Chronicles Featuring This Persona
+<!-- cv-section: chronicles -->
+
+| ID | Title | Story State |
+|----|-------|-------------|
+| CHR-### | <Chronicle title> | PROPOSED / CURRENT / ASPIRATIONAL |
 
 ---
 
 ## Research Notes
-<!-- Document what is validated vs assumed -->
-- **Validated:** <what we know from research>
-- **Assumed:** <what we're treating as true but haven't confirmed>
-- **To validate:** <open research questions about this persona>
+<!-- cv-section: research -->
+
+| Claim | Validation Status | Source |
+|-------|-------------------|--------|
+| <specific claim about this persona> | validated / assumed / to-validate | <source or reason> |
+
+**Still to validate:**
+- <specific thing that needs user research>
 
 ---
-_Persona by: <author> | Created: YYYY-MM-DD | Status: draft_
+_Persona by: <config.json → author> | Created: YYYY-MM-DD | Status: draft_
 _Research basis: validated | assumed | partially validated_
 ```
 
@@ -289,18 +355,30 @@ _Research basis: validated | assumed | partially validated_
 
 ## Step 6 — Handoff
 
-After the persona is generated, say:
+After the persona is generated, output ledger entries and suggest the next step:
 
-> "PERS-### is ready. Next steps:"
+> "PERS-### is ready. The Voice & Behaviour Profile is what powers simulation — the more specific it is, the more useful `/cv.story` will be."
 >
-> - `/cv.chronicle` — reference this persona when writing a new chronicle
-> - `/cv.persona PERS-###` — come back to update as you learn more from research
-> - Add the persona ID to any existing chronicles that this persona fits
+> Next steps:
+> - `/cv.story PERS-###` — run a Story Discovery simulation with this persona. This is the recommended next step.
+> - `/cv.chronicle` — reference this persona when writing a new chronicle (if skipping simulation)
+> - `/cv.persona PERS-###` — return to update as you learn more from research
 
-Log the creation. If batch-creating via Option D, log all 3:
+Output ledger entries:
+
 ```
-[YYYY-MM-DD] [/cv.persona] [PERS-###] DECISION: Persona created | NAME: <name> | BASIS: <validated/assumed>
+LEDGER ENTRIES — append to ledger.md
+
+[PE-###] Persona created: <name> — <archetype>
+  date:   YYYY-MM-DD
+  source: persona-build
+  actor:  ai
+  status: compiled
+  tags:   [PERS:identity, PERS:voice, PERS:emotional-defaults, PERS:never-do]
+  note:   Research basis: <validated/assumed/partially-validated>
 ```
+
+If batch-creating via Option D, log all 3 personas.
 
 ---
 
