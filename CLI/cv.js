@@ -13,7 +13,7 @@
  *   cv migrate                  Run pending project migrations
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, createWriteStream } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, copyFileSync, createWriteStream, rmSync } from 'fs';
 import { input, checkbox, select } from '@inquirer/prompts';
 import https from 'https';
 import { MIGRATIONS, migrateProject, semverLt } from './cv-migrate.js';
@@ -819,6 +819,17 @@ async function cmdUpgrade(args) {
   if (migrateOnly) { await cmdMigrate([]); return; }
 
   console.log('\n' + bold('Downloading v' + latestVersion + '...') + '\n');
+
+  // ── Clean existing files for a fresh install ──────────────────────────────
+  if (existsSync(CV_COMMANDS)) {
+    rmSync(CV_COMMANDS, { recursive: true, force: true });
+    info('Cleared ' + CV_COMMANDS);
+  }
+  if (existsSync(CV_LIB_DIR)) {
+    rmSync(CV_LIB_DIR, { recursive: true, force: true });
+    info('Cleared ' + CV_LIB_DIR);
+  }
+  console.log('');
 
   // ── Static CLI files ──────────────────────────────────────────────────────
   const STATIC_FILES = [
