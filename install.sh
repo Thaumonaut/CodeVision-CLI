@@ -133,6 +133,10 @@ if [ "$LOCAL" = "1" ]; then
   [ -d "$LOCAL_COMMANDS" ] || fail "Commands/ directory not found at $SCRIPT_DIR"
 
   CV_COMMANDS="$CV_HOME/Commands"
+  if [ -d "$CV_COMMANDS" ]; then
+    rm -rf "$CV_COMMANDS"
+    info "Cleared Commands/"
+  fi
   mkdir -p "$CV_COMMANDS"
 
   printf "\n${BOLD}Copying command files from $LOCAL_COMMANDS...${RESET}\n\n"
