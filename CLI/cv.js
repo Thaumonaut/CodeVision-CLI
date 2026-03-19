@@ -28,7 +28,6 @@ const CV_HOME = join(homedir(), '.codevision');
 const CV_SYSTEM_PROJECTS = join(CV_HOME, 'projects');
 const CV_COMMANDS = join(CV_HOME, 'Commands');
 const CV_CLI_DIR = join(CV_HOME, 'CLI');
-const CV_LIB_DIR = join(CV_HOME, 'lib');
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -825,21 +824,19 @@ async function cmdUpgrade(args) {
     rmSync(CV_COMMANDS, { recursive: true, force: true });
     info('Cleared ' + CV_COMMANDS);
   }
-  if (existsSync(CV_LIB_DIR)) {
-    rmSync(CV_LIB_DIR, { recursive: true, force: true });
-    info('Cleared ' + CV_LIB_DIR);
-  }
   console.log('');
 
   // ── Static CLI files ──────────────────────────────────────────────────────
+  // All helper files go to CV_CLI_DIR alongside cv.js — they use relative ./imports
   const STATIC_FILES = [
-    { r: `${REPO_CLI_DIR}/cv.js`, l: join(CV_CLI_DIR, 'cv.js') },
-    { r: `${REPO_CLI_DIR}/cv-stories.js`, l: join(CV_LIB_DIR, 'cv-stories.js') },
-    { r: `${REPO_CLI_DIR}/cv-migrate.js`, l: join(CV_LIB_DIR, 'cv-migrate.js') },
-    { r: `${REPO_CLI_DIR}/package.json`, l: join(CV_CLI_DIR, 'package.json') },
+    { r: `${REPO_CLI_DIR}/cv.js`,         l: join(CV_CLI_DIR, 'cv.js') },
+    { r: `${REPO_CLI_DIR}/cv-migrate.js`, l: join(CV_CLI_DIR, 'cv-migrate.js') },
+    { r: `${REPO_CLI_DIR}/cv-stories.js`, l: join(CV_CLI_DIR, 'cv-stories.js') },
+    { r: `${REPO_CLI_DIR}/cv-prompt.js`,  l: join(CV_CLI_DIR, 'cv-prompt.js') },
+    { r: `${REPO_CLI_DIR}/package.json`,  l: join(CV_CLI_DIR, 'package.json') },
   ];
 
-  for (const d of [CV_CLI_DIR, CV_LIB_DIR, CV_COMMANDS]) {
+  for (const d of [CV_CLI_DIR, CV_COMMANDS]) {
     mkdirSync(d, { recursive: true });
   }
 
