@@ -261,6 +261,9 @@ function resolveArtifactRoot(slugHint, cwd = process.cwd()) {
 
 function installFiles(src, dest, { force = false } = {}) {
   if (!existsSync(src)) return { installed: 0, skipped: 0 };
+  if (force && existsSync(dest)) {
+    rmSync(dest, { recursive: true, force: true });
+  }
   mkdirSync(dest, { recursive: true });
   const files = readdirSync(src).filter(f => f.endsWith('.md'));
   let installed = 0, skipped = 0;
@@ -599,7 +602,7 @@ function cmdFetch(args) {
   const slugHint = args.find(a => !a.startsWith('--'));
   const full = args.includes('--full');
 
-  const { root, slug, config } = resolveArtifactRoot(slugHint);
+  const { root, slug } = resolveArtifactRoot(slugHint);
 
   let phase = 'explore';
   const s = readProjectStatus(root);
@@ -652,7 +655,7 @@ function cmdStatus(args) {
       return;
     }
     console.log('\n' + bold('CodeVision Projects') + '\n');
-    for (const { slug, root, config } of allProjects) {
+    for (const { slug, config } of allProjects) {
       const phase = config?.current_phase || 'unknown';
       const name = config?.name || slug;
       const mode = config?.store_mode || '?';
