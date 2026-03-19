@@ -57,8 +57,8 @@ TRIAGE      PROVE         CHANGE MGMT        NAVIGATION
 - **/cv.review** — AI reviews implementation against Acceptance Criteria. Reports pass/fail per criterion.
 
 ### Change Management
-- **/cv.change** — Classify and route a scope change request.
-- **/cv.rewind** — Explicitly reverse a decision. AI identifies affected ledger entries and minimum rewind level.
+- **/cv.change** — Scope and route an intentional change. Classifies into Level 1 (code only), Level 2 (task update), Level 3 (spec revision), or Level 4 (scope shift). Fast path for simple changes — no triage process needed.
+- **/cv.rewind** — Explicitly reverse a prior decision. AI identifies affected ledger entries and minimum rewind level.
 
 ### Navigation & State
 - **/cv.status** — Summarize current state: phase, approval states, open questions, next recommended action.

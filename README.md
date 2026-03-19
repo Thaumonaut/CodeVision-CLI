@@ -114,7 +114,8 @@ Available at any point — triggered by need, not sequence.
 | `/cv.continue` | Resume after a break or new session |
 | `/cv.research` | Gather knowledge and deposit findings to the artifact store |
 | `/cv.clarify` | Resolve open questions in any artifact |
-| `/cv.triage` | Classify and route a gap found during build |
+| `/cv.change` | Scope and route an intentional change (Level 1–4, minimum disruption) |
+| `/cv.triage` | Classify and route an unexpected gap found during build |
 | `/cv.debug` | Fix a scoped bug with explicit constraints |
 | `/cv.help` | Show all commands and what each one does |
 

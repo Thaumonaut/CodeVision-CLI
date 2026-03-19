@@ -23,6 +23,13 @@ EXPLORE           DEFINE              SPECIFY    TASK       BUILD               
 /cv.discover      /cv.approve                               checkpoint — auto]
 ```
 
+**Ambient commands** — available at any phase, triggered by need not sequence:
+
+```
+/cv.status    /cv.continue    /cv.change    /cv.triage    /cv.debug
+/cv.clarify   /cv.research    /cv.help
+```
+
 Every stage has a gate. Gates enforce that upstream artifacts are locked before downstream work begins.
 
 The AI always proposes what comes next. Every session ends with a clear suggested next step.
